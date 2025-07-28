@@ -1,0 +1,437 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum DocumentType {
+  BI
+  PASSPORT
+  DRIVER_LICENSE
+}
+
+enum UserType {
+  BASIC
+  PREMIUM
+  BUSINESS
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+  PREMIUM_PENDING
+}
+
+enum Currency {
+  AOA
+  USD
+  EUR
+}
+
+enum RequestCategory {
+  PERSONAL
+  BUSINESS
+  SERVICE
+  RENT
+  OTHER
+}
+
+enum RequestStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+enum WalletStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum TransactionType {
+  TRANSFER
+  DEPOSIT
+  WITHDRAWAL
+  PAYMENT_REQUEST
+  SERVICE_PAYMENT
+  SHARED_WALLET
+  BUSINESS_TRANSFER
+  INTERNATIONAL_TRANSFER
+  VALIDATION_REWARD
+  REFERRAL_BONUS
+  CASHBACK
+  FEE
+  SMART_CONTRACT
+  RATEIO
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REVERSED
+}
+
+enum ServiceType {
+  UNITEL
+  MOVICEL
+  ZAP
+  TV_CABO
+  ELECTRICITY
+  WATER
+  INTERNET
+  OTHER
+}
+
+enum NotificationType {
+  PAYMENT_RECEIVED
+  PAYMENT_SENT
+  PAYMENT_REQUEST
+  VALIDATION_REQUEST
+  VALIDATION_COMPLETED
+  VALIDATION_REWARD
+  PREMIUM_UPGRADE
+  SECURITY_ALERT
+  REMINDER
+  SMART_CONTRACT_UPDATE
+  RATEIO_COMPLETED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  READ
+  FAILED
+}
+
+enum RewardType {
+  VALIDATION
+  REFERRAL
+  CASHBACK
+  BONUS
+  GAMIFICATION
+}
+
+// ========================================
+// MODELS
+// ========================================
+
+model User {
+  id              String       @id @default(uuid())
+  phone           String       @unique
+  email           String?      @unique
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime
+  gender          Gender
+  documentType    DocumentType
+  documentNumber  String
+  documentExpiry  DateTime
+  documentPhoto   String?
+  address         Json?        // {street, city, province, postalCode, country}
+  userType        UserType     @default(BASIC)
+  status          UserStatus   @default(PENDING)
+  validators      String[]     // IDs de validadores
+  validationScore Int          @default(0)
+  preferences     Json?        // {language, currency, notifications, privacy}
+  stats           Json?        // {totalTransactions, totalVolume, memberSince, lastActive}
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  wallets         Wallet[]
+  sentTransactions     Transaction[] @relation("FromUser")
+  receivedTransactions Transaction[] @relation("ToUser")
+  paymentRequests PaymentRequest[]
+  validations     Validation[]
+  validationsGiven Validation[] @relation("Validator")
+  notifications   Notification[]
+  rewards         Reward[]
+  supportTickets  SupportTicket[]
+  sharedWallets   SharedWalletMember[]
+  smartContractConfirmations SmartContractConfirmation[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id              String       @id @default(uuid())
+  userId          String
+  walletNumber    String       @unique
+  balances        Json         // {AOA: 0, USD: 0, EUR: 0}
+  limits          Json         // {dailyTransfer, monthlyTransfer, maxBalance, minBalance}
+  status          WalletStatus @default(ACTIVE)
+  isDefault       Boolean      @default(false)
+  security        Json         // {pin (hashed), biometricEnabled, twoFactorEnabled, lastPinChange}
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentTransactions     Transaction[] @relation("FromWallet")
+  receivedTransactions Transaction[] @relation("ToWallet")
+  sharedWallets   SharedWallet[]
+  rateioRecipients RateioRecipient[]
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  reference       String            @unique
+  fromWalletId    String?
+  toWalletId      String?
+  fromUserId      String?
+  toUserId        String?
+  type            TransactionType
+  amount          Float
+  currency        Currency
+  description     String
+  notes           String?
+  status          TransactionStatus @default(PENDING)
+  processedAt     DateTime?
+  completedAt     DateTime?
+  metadata        Json?             // {category, tags, location, device}
+  security        Json?             // {riskScore, fraudDetected, requiresApproval}
+  fees            Json?             // {amount, type, description}
+  
+  // Smart Contract fields
+  conditions      Json?             // {type: 'MANUAL_CONFIRM' | 'TIME_BASED', details: {confirmUserId: string, timeout: '7 days'}}
+  conditionMet    Boolean           @default(false)
+  
+  // Rateio fields
+  recipients      Json?             // [{walletId: string, amount: float, percentage: float}]
+  scheduleDate    DateTime?         // Para pré-agendamento
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  // Relações
+  fromWallet      Wallet?           @relation("FromWallet", fields: [fromWalletId], references: [id], onDelete: SetNull)
+  toWallet        Wallet?           @relation("ToWallet", fields: [toWalletId], references: [id], onDelete: SetNull)
+  fromUser        User?             @relation("FromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser          User?             @relation("ToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  rateioRecipients RateioRecipient[]
+  smartContractConfirmations SmartContractConfirmation[]
+
+  @@map("transactions")
+}
+
+model PaymentRequest {
+  id              String       @id @default(uuid())
+  requesterId     String
+  payerId         String?
+  amount          Float
+  currency        Currency     @default(AOA)
+  description     String
+  notes           String?
+  category        RequestCategory
+  status          RequestStatus @default(PENDING)
+  expiresAt       DateTime
+  paidAt          DateTime?
+  metadata        Json?        // {invoiceNumber, dueDate, attachments, tags}
+  notifications   Json?        // {reminderSent, reminderCount, lastReminderAt}
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  requester       User         @relation(fields: [requesterId], references: [id])
+
+  @@map("payment_requests")
+}
+
+model Validation {
+  id              String       @id @default(uuid())
+  userId          String
+  validatorId     String
+  status          String       @default("PENDING") // PENDING, APPROVED, REJECTED
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  user            User         @relation(fields: [userId], references: [id])
+  validator       User         @relation("Validator", fields: [validatorId], references: [id])
+
+  @@map("validations")
+}
+
+model SharedWallet {
+  id              String       @id @default(uuid())
+  name            String
+  description     String?
+  walletId        String
+  ownerId         String
+  members         SharedWalletMember[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  wallet          Wallet       @relation(fields: [walletId], references: [id])
+
+  @@map("shared_wallets")
+}
+
+model SharedWalletMember {
+  id              String       @id @default(uuid())
+  sharedWalletId  String
+  userId          String
+  role            String       // OWNER, ADMIN, MEMBER
+  permissions     Json?        // {canSend, canReceive, canView, canManage}
+  createdAt       DateTime     @default(now())
+
+  // Relações
+  sharedWallet    SharedWallet @relation(fields: [sharedWalletId], references: [id])
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@map("shared_wallet_members")
+}
+
+model SmartContractConfirmation {
+  id              String       @id @default(uuid())
+  transactionId   String
+  userId          String
+  confirmed       Boolean      @default(false)
+  notes           String?
+  createdAt       DateTime     @default(now())
+
+  // Relações
+  user            User         @relation(fields: [userId], references: [id])
+  transaction     Transaction  @relation(fields: [transactionId], references: [id])
+
+  @@map("smart_contract_confirmations")
+}
+
+model RateioRecipient {
+  id              String       @id @default(uuid())
+  transactionId   String
+  walletId        String
+  amount          Float
+  percentage      Float
+  status          String       @default("PENDING") // PENDING, COMPLETED, FAILED
+  createdAt       DateTime     @default(now())
+
+  // Relações
+  transaction     Transaction  @relation(fields: [transactionId], references: [id])
+  wallet          Wallet       @relation(fields: [walletId], references: [id])
+
+  @@map("rateio_recipients")
+}
+
+model Service {
+  id              String       @id @default(uuid())
+  name            String
+  type            ServiceType
+  provider        String
+  accountNumber   String
+  amount          Float
+  currency        Currency
+  status          String       @default("PENDING")
+  receipt         String?      // URL do PDF gerado
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("services")
+}
+
+model Notification {
+  id              String             @id @default(uuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  data            Json?
+  status          NotificationStatus @default(PENDING)
+  readAt          DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime           @default(now())
+
+  // Relações
+  user            User               @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model Reward {
+  id              String       @id @default(uuid())
+  userId          String
+  type            RewardType
+  amount          Float
+  currency        Currency
+  description     String
+  metadata        Json?
+  claimed         Boolean      @default(false)
+  claimedAt       DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime     @default(now())
+
+  // Relações
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@map("rewards")
+}
+
+model SupportTicket {
+  id              String       @id @default(uuid())
+  userId          String
+  subject         String
+  description     String
+  category        String
+  priority        String       @default("MEDIUM")
+  status          String       @default("OPEN")
+  assignedTo      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relações
+  user            User         @relation(fields: [userId], references: [id])
+
+  @@map("support_tickets")
+}
+
+model Analytics {
+  id              String       @id @default(uuid())
+  userId          String?
+  type            String       // USER_STATS, TRANSACTION_STATS, SYSTEM_STATS
+  data            Json
+  period          String       // DAILY, WEEKLY, MONTHLY, YEARLY
+  createdAt       DateTime     @default(now())
+
+  @@map("analytics")
+}
+
+model SecurityLog {
+  id              String       @id @default(uuid())
+  userId          String?
+  action          String
+  details         Json?
+  ipAddress       String?
+  userAgent       String?
+  riskScore       Int?
+  createdAt       DateTime     @default(now())
+
+  @@map("security_logs")
+} 

@@ -1,0 +1,74 @@
+FROM node:20-alpine AS builder
+
+# Instalar dependências do sistema
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    libc6-compat
+
+# Criar diretório da aplicação
+WORKDIR /app
+
+# Copiar arquivos de dependências
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Instalar todas as dependências (incluindo devDependencies)
+RUN npm ci
+
+# Gerar cliente Prisma
+RUN npx prisma generate
+
+# Copiar código da aplicação
+COPY . .
+
+# Build da aplicação
+RUN npm run build
+
+# Stage de produção
+FROM node:20-alpine AS production
+
+# Instalar dependências do sistema
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    libc6-compat
+
+# Criar usuário não-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nestjs -u 1001
+
+# Criar diretório da aplicação
+WORKDIR /app
+
+# Copiar arquivos de dependências
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Instalar apenas dependências de produção
+RUN npm ci --only=production && npm cache clean --force
+
+# Gerar cliente Prisma
+RUN npx prisma generate
+
+# Copiar build da aplicação
+COPY --from=builder /app/dist ./dist
+
+# Criar diretórios necessários
+RUN mkdir -p uploads logs
+
+# Definir permissões
+RUN chown -R nestjs:nodejs /app
+USER nestjs
+
+# Expor porta
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node healthcheck.js
+
+# Comando para iniciar a aplicação
+CMD ["npm", "run", "start:prod"] 

@@ -1,0 +1,166 @@
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length } from 'class-validator';
+
+export enum TransactionType {
+  TRANSFER = 'TRANSFER',
+  PAYMENT = 'PAYMENT',
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAWAL = 'WITHDRAWAL',
+  RATEIO = 'RATEIO',
+  SMART_CONTRACT = 'SMART_CONTRACT'
+}
+
+export enum TransactionStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  REVERSED = 'REVERSED'
+}
+
+export enum Currency {
+  AOA = 'AOA',
+  USD = 'USD',
+  EUR = 'EUR'
+}
+
+export class CreateTransactionDto {
+  @ApiProperty({ description: 'ID da carteira de origem (opcional para DEPOSIT)' })
+  @IsOptional()
+  @IsString()
+  fromWalletId?: string;
+
+  @ApiProperty({ description: 'ID da carteira de destino (opcional para WITHDRAWAL)' })
+  @IsOptional()
+  @IsString()
+  toWalletId?: string;
+
+  @ApiProperty({ description: 'ID do usuário de origem (opcional para DEPOSIT)' })
+  @IsOptional()
+  @IsString()
+  fromUserId?: string;
+
+  @ApiProperty({ description: 'ID do usuário de destino (opcional para WITHDRAWAL)' })
+  @IsOptional()
+  @IsString()
+  toUserId?: string;
+
+  @ApiProperty({ description: 'Valor da transação' })
+  @IsNumber()
+  @Min(0.01)
+  amount: number;
+
+  @ApiProperty({ description: 'Moeda da transação', enum: Currency })
+  @IsEnum(Currency)
+  currency: Currency;
+
+  @ApiProperty({ description: 'Descrição da transação' })
+  @IsString()
+  description: string;
+
+  @ApiProperty({ description: 'PIN de segurança' })
+  @IsString()
+  @Length(4, 6)
+  pin: string;
+
+  @ApiProperty({ description: 'Tipo de transação', enum: TransactionType })
+  @IsEnum(TransactionType)
+  type: TransactionType;
+
+  @ApiProperty({ description: 'Dados adicionais da transação', required: false })
+  @IsOptional()
+  metadata?: Record<string, any>;
+}
+
+export class TransactionResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  fromWalletId: string;
+
+  @ApiProperty()
+  toWalletId: string;
+
+  @ApiProperty()
+  amount: number;
+
+  @ApiProperty({ enum: Currency })
+  currency: Currency;
+
+  @ApiProperty()
+  description: string;
+
+  @ApiProperty({ enum: TransactionType })
+  type: TransactionType;
+
+  @ApiProperty({ enum: TransactionStatus })
+  status: TransactionStatus;
+
+  @ApiProperty()
+  createdAt: Date;
+
+  @ApiProperty()
+  updatedAt: Date;
+
+  @ApiProperty({ required: false })
+  metadata?: Record<string, any>;
+}
+
+export class TransactionFilterDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEnum(TransactionType)
+  type?: TransactionType;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEnum(TransactionStatus)
+  status?: TransactionStatus;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsEnum(Currency)
+  currency?: Currency;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  minAmount?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  maxAmount?: number;
+}
+
+export class TransactionStatsDto {
+  @ApiProperty()
+  totalTransactions: number;
+
+  @ApiProperty()
+  totalAmount: number;
+
+  @ApiProperty()
+  averageAmount: number;
+
+  @ApiProperty()
+  completedTransactions: number;
+
+  @ApiProperty()
+  pendingTransactions: number;
+
+  @ApiProperty()
+  failedTransactions: number;
+} 

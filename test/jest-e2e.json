@@ -1,0 +1,20 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapping": {
+    "^@/(.*)$": "<rootDir>/../src/$1",
+    "^@/common/(.*)$": "<rootDir>/../src/common/$1",
+    "^@/users/(.*)$": "<rootDir>/../src/users/$1",
+    "^@/wallets/(.*)$": "<rootDir>/../src/wallets/$1",
+    "^@/transactions/(.*)$": "<rootDir>/../src/transactions/$1",
+    "^@/notifications/(.*)$": "<rootDir>/../src/notifications/$1"
+  },
+  "setupFilesAfterEnv": ["<rootDir>/setup-e2e.ts"],
+  "testTimeout": 30000,
+  "verbose": true
+}
