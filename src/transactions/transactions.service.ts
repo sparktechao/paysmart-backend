@@ -23,6 +23,15 @@ export class TransactionsService {
     this.validateTransactionData(data);
     console.log('✅ [2] Dados básicos validados com sucesso');
 
+    // Resolver toPhone para toWalletId se fornecido
+    if (data.toPhone && !data.toWalletId) {
+      console.log('📱 [2.1] Resolvendo telefone para carteira padrão...');
+      const resolvedWallet = await this.resolvePhoneToDefaultWallet(data.toPhone);
+      data.toWalletId = resolvedWallet.id;
+      data.toUserId = resolvedWallet.userId;
+      console.log('✅ [2.1] Telefone resolvido para carteira:', resolvedWallet.walletNumber);
+    }
+
     // Processar transação dentro de uma transação do banco
     console.log('🔄 [3] Iniciando transação do banco...');
     const result = await this.prisma.$transaction(async (prisma) => {
@@ -50,77 +59,92 @@ export class TransactionsService {
         console.log('✅ [5] Carteira de destino validada:', toWallet.id);
       }
 
-      // 2. Validar regras de negócio
-      console.log('📋 [6] Validando regras de negócio...');
-      await this.validateBusinessRules(data, fromWallet, toWallet);
-      console.log('✅ [6] Regras de negócio validadas');
+      // 2. Validar PIN da carteira de origem
+      if (fromWallet) {
+        console.log('🔐 [6] Validando PIN...');
+        await this.validatePin(fromWallet, data.pin);
+        console.log('✅ [6] PIN validado com sucesso');
+      }
 
-      // 3. Criar a transação
-      console.log('📝 [7] Criando transação no banco...');
-      
-      // Preparar dados da transação baseado no tipo
-      const transactionData: any = {
-        reference: this.generateReference(),
-        type: data.type,
-        amount: data.amount,
-        currency: data.currency,
-        description: data.description,
-        status: this.getInitialStatus(data.type),
-      };
+      // 3. Validar saldo suficiente na carteira de origem
+      if (fromWallet && data.type !== 'DEPOSIT') {
+        console.log('💰 [7] Verificando saldo...');
+        await this.validateBalance(fromWallet, data.amount, data.currency);
+        console.log('✅ [7] Saldo suficiente confirmado');
+      }
 
-      // Adicionar campos opcionais apenas se existirem
-      if (data.fromWalletId) {
-        transactionData.fromWallet = { connect: { id: data.fromWalletId } };
-      }
-      if (data.toWalletId) {
-        transactionData.toWallet = { connect: { id: data.toWalletId } };
-      }
-      if (data.fromUserId && data.type !== 'DEPOSIT') {
-        transactionData.fromUser = { connect: { id: data.fromUserId } };
-      }
-      // Para DEPOSIT, não incluímos fromUser nem fromWallet
-      if (data.toUserId) {
-        transactionData.toUser = { connect: { id: data.toUserId } };
-      }
-      if (data.notes) transactionData.notes = data.notes;
-      if (data.conditions) transactionData.conditions = data.conditions;
-      if (data.recipients) transactionData.recipients = data.recipients;
-      if (data.scheduleDate) transactionData.scheduleDate = data.scheduleDate;
+      // 4. Gerar referência única
+      console.log('🔢 [8] Gerando referência...');
+      const reference = await this.generateReference();
+      console.log('✅ [8] Referência gerada:', reference);
 
-      // Criar transação usando Prisma normal
-      const createdTransaction = await prisma.transaction.create({
-        data: transactionData,
+      // 5. Criar transação
+      console.log('💾 [9] Criando registro da transação...');
+      const transaction = await prisma.transaction.create({
+        data: {
+          reference,
+          fromWalletId: fromWallet?.id || null,
+          toWalletId: toWallet?.id || null,
+          fromUserId: fromWallet?.userId || null,
+          toUserId: toWallet?.userId || null,
+          type: data.type,
+          amount: data.amount,
+          currency: data.currency,
+          description: data.description,
+          status: 'PROCESSING',
+          metadata: data.metadata || {},
+        },
       });
-      console.log('✅ [7] Transação criada:', createdTransaction.id);
+      console.log('✅ [9] Transação criada:', transaction.id);
 
-      // 4. Processar transação baseada no tipo
-      console.log('⚙️ [8] Processando transação por tipo...');
-      const processedTransaction = await this.processTransactionByType(prisma, createdTransaction, data);
-      console.log('✅ [8] Transação processada, status:', processedTransaction.status);
+      try {
+        // 6. Processar movimentação dos saldos
+        console.log('🔄 [10] Processando movimentação de saldos...');
+        
+        if (data.type === 'DEPOSIT') {
+          // Apenas adicionar saldo à carteira de destino
+          await this.updateWalletBalance(prisma, toWallet, data.amount, data.currency, 'ADD');
+          console.log('✅ [10] Depósito processado');
+        } else if (data.type === 'WITHDRAWAL') {
+          // Apenas remover saldo da carteira de origem
+          await this.updateWalletBalance(prisma, fromWallet, data.amount, data.currency, 'SUBTRACT');
+          console.log('✅ [10] Saque processado');
+        } else {
+          // Remover da origem e adicionar ao destino
+          await this.updateWalletBalance(prisma, fromWallet, data.amount, data.currency, 'SUBTRACT');
+          await this.updateWalletBalance(prisma, toWallet, data.amount, data.currency, 'ADD');
+          console.log('✅ [10] Transferência processada');
+        }
 
-      // 5. Atualizar saldos das carteiras
-      console.log('💰 [9] Atualizando saldos das carteiras...');
-      await this.updateWalletBalances(prisma, processedTransaction, fromWallet, toWallet);
-      console.log('✅ [9] Saldos atualizados com sucesso');
+        // 7. Atualizar status para COMPLETED
+        console.log('🏁 [11] Finalizando transação...');
+        const updatedTransaction = await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { 
+            status: 'COMPLETED',
+            processedAt: new Date(),
+            completedAt: new Date(),
+          },
+        });
+        console.log('✅ [11] Transação finalizada com sucesso');
 
-      console.log('🎉 [10] Transação do banco concluída com sucesso');
-      return processedTransaction;
-    }, {
-      timeout: 30000 // 30 segundos de timeout
+        return updatedTransaction;
+
+      } catch (error) {
+        console.error('❌ [ERROR] Erro ao processar movimentação:', error);
+        
+        // Marcar transação como falhada
+        await prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { status: 'FAILED' },
+        });
+        
+        throw error;
+      }
     });
 
-    // 6. Notificar usuários (fora da transação para não causar timeout)
-    // try {
-    //   await this.notifyUsers(result);
-    // } catch (error) {
-    //   console.log('Erro ao enviar notificações (não crítico):', error.message);
-    //   // Não falha a transação por erro de notificação
-    // }
-
-    // 7. Agendar processamentos especiais se necessário (comentado temporariamente)
-    // await this.scheduleSpecialProcessing(result, data);
-
-    return this.mapToResponseDto(result);
+    console.log('🎉 [12] Transação concluída com sucesso:', result.id);
+    return this.formatTransactionResponse(result);
   }
 
   private validateTransactionData(data: any): void {
@@ -139,42 +163,71 @@ export class TransactionsService {
       throw new BadRequestException('Tipo de transação inválido');
     }
 
-    console.log('🔍 [2.4] Validando carteiras baseado no tipo:', { type: data.type, fromWalletId: data.fromWalletId, toWalletId: data.toWalletId });
+    console.log('🔍 [2.4] Validando carteiras baseado no tipo:', { 
+      type: data.type, 
+      fromWalletId: data.fromWalletId, 
+      toWalletId: data.toWalletId,
+      toPhone: data.toPhone 
+    });
     
     // Validações específicas por tipo
     if (data.type === 'DEPOSIT') {
-      if (!data.toWalletId) {
-        throw new BadRequestException('Carteira de destino é obrigatória para depósitos');
+      if (!data.toWalletId && !data.toPhone) {
+        throw new BadRequestException('Carteira de destino ou telefone do destinatário é obrigatório para depósitos');
+      }
+      if (data.toWalletId && data.toPhone) {
+        throw new BadRequestException('Não é possível usar toWalletId e toPhone simultaneamente');
       }
       if (data.fromWalletId) {
         throw new BadRequestException('Depósitos não devem ter carteira de origem');
       }
-      // Validar UUID da carteira de destino
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.toWalletId)) {
+      // Validar UUID da carteira de destino se fornecido
+      if (data.toWalletId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.toWalletId)) {
         throw new BadRequestException('ID da carteira de destino deve ser um UUID válido');
+      }
+      // Validar formato do telefone se fornecido
+      if (data.toPhone && !/^\+244\d{9}$/.test(data.toPhone)) {
+        throw new BadRequestException('Número de telefone deve estar no formato +244XXXXXXXXX');
       }
     } else if (data.type === 'WITHDRAWAL') {
       if (!data.fromWalletId) {
         throw new BadRequestException('Carteira de origem é obrigatória para saques');
       }
-      if (data.toWalletId) {
-        throw new BadRequestException('Saques não devem ter carteira de destino');
+      if (data.toWalletId || data.toPhone) {
+        throw new BadRequestException('Saques não devem ter carteira ou telefone de destino');
       }
       // Validar UUID da carteira de origem
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.fromWalletId)) {
         throw new BadRequestException('ID da carteira de origem deve ser um UUID válido');
       }
     } else {
-      // Para outros tipos (TRANSFER, etc.)
-      if (!data.fromWalletId || !data.toWalletId) {
-        throw new BadRequestException('Carteiras de origem e destino são obrigatórias');
+      // Para TRANSFER, PAYMENT, etc.
+      if (!data.fromWalletId) {
+        throw new BadRequestException('Carteira de origem é obrigatória');
       }
-      // Validar UUIDs
+      if (!data.toWalletId && !data.toPhone) {
+        throw new BadRequestException('Carteira de destino ou telefone do destinatário é obrigatório');
+      }
+      if (data.toWalletId && data.toPhone) {
+        throw new BadRequestException('Não é possível usar toWalletId e toPhone simultaneamente');
+      }
+      
+      // Validar UUIDs se fornecidos
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.fromWalletId)) {
         throw new BadRequestException('ID da carteira de origem deve ser um UUID válido');
       }
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.toWalletId)) {
+      if (data.toWalletId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.toWalletId)) {
         throw new BadRequestException('ID da carteira de destino deve ser um UUID válido');
+      }
+      
+      // Validar formato do telefone se fornecido
+      if (data.toPhone && !/^\+244\d{9}$/.test(data.toPhone)) {
+        throw new BadRequestException('Número de telefone deve estar no formato +244XXXXXXXXX');
+      }
+      
+      // Não permitir transferência para si mesmo
+      if (data.toWalletId && data.fromWalletId === data.toWalletId) {
+        throw new BadRequestException('Não é possível transferir para a mesma carteira');
       }
     }
 
@@ -570,9 +623,9 @@ export class TransactionsService {
     };
   }
 
-  private generateReference(): string {
-    const timestamp = Date.now().toString();
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  private async generateReference(): Promise<string> {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `TXN${timestamp}${random}`;
   }
 
@@ -594,6 +647,109 @@ export class TransactionsService {
   private mapToResponseDto(transaction: any): TransactionResponseDto {
     return {
       id: transaction.id,
+      fromWalletId: transaction.fromWalletId,
+      toWalletId: transaction.toWalletId,
+      amount: transaction.amount,
+      currency: transaction.currency,
+      description: transaction.description,
+      type: transaction.type,
+      status: transaction.status,
+      createdAt: transaction.createdAt,
+      updatedAt: transaction.updatedAt,
+      metadata: transaction.metadata,
+    };
+  }
+
+  /**
+   * Resolve um número de telefone para a carteira padrão do usuário
+   */
+  private async resolvePhoneToDefaultWallet(phone: string) {
+    console.log('📱 Resolvendo telefone para carteira padrão:', phone);
+    
+    // Buscar usuário pelo telefone
+    const user = await this.prisma.user.findUnique({
+      where: { phone },
+      select: { id: true, firstName: true, lastName: true, status: true }
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuário com telefone ${phone} não encontrado`);
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new BadRequestException(`Usuário com telefone ${phone} não está ativo`);
+    }
+
+    // Buscar carteira padrão do usuário
+    const defaultWallet = await this.prisma.wallet.findFirst({
+      where: {
+        userId: user.id,
+        isDefault: true,
+        status: 'ACTIVE'
+      },
+      select: {
+        id: true,
+        userId: true,
+        walletNumber: true,
+        status: true
+      }
+    });
+
+    if (!defaultWallet) {
+      throw new NotFoundException(`Usuário ${user.firstName} ${user.lastName} não possui carteira padrão ativa`);
+    }
+
+    console.log('✅ Carteira padrão encontrada:', defaultWallet.walletNumber);
+    return defaultWallet;
+  }
+
+  private async validatePin(wallet: any, pin: string): Promise<void> {
+    const security = wallet.security as any;
+    const storedPin = security?.pin;
+    
+    if (!storedPin) {
+      throw new BadRequestException('PIN não configurado para esta carteira');
+    }
+    
+    // Se o PIN estiver hasheado (bcrypt), validar usando bcrypt
+    if (storedPin.startsWith('$2a$') || storedPin.startsWith('$2b$')) {
+      const bcrypt = require('bcrypt');
+      const isValid = await bcrypt.compare(pin, storedPin);
+      if (!isValid) {
+        throw new BadRequestException('PIN incorreto');
+      }
+    } else {
+      // PIN em texto plano (compatibilidade)
+      if (storedPin !== pin) {
+        throw new BadRequestException('PIN incorreto');
+      }
+    }
+  }
+
+  private async validateBalance(wallet: any, amount: number, currency: Currency): Promise<void> {
+    const currentBalance = (wallet.balances as any)[currency] || 0;
+    if (currentBalance < amount) {
+      throw new BadRequestException(`Saldo insuficiente para a transação. Saldo atual: ${currentBalance} ${currency}`);
+    }
+  }
+
+  private async updateWalletBalance(prisma: any, wallet: any, amount: number, currency: Currency, operation: 'ADD' | 'SUBTRACT'): Promise<void> {
+    const balances = wallet.balances as any;
+    if (operation === 'ADD') {
+      balances[currency] = (balances[currency] || 0) + amount;
+    } else {
+      balances[currency] = (balances[currency] || 0) - amount;
+    }
+    await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balances: balances },
+    });
+  }
+
+  private formatTransactionResponse(transaction: any): TransactionResponseDto {
+    return {
+      id: transaction.id,
+      reference: transaction.reference,
       fromWalletId: transaction.fromWalletId,
       toWalletId: transaction.toWalletId,
       amount: transaction.amount,
