@@ -10,7 +10,10 @@ async function main() {
   await prisma.$transaction([
     prisma.notification.deleteMany(),
     prisma.transaction.deleteMany(),
+    prisma.rateioRecipient.deleteMany(),
+    prisma.sharedWallet.deleteMany(),
     prisma.wallet.deleteMany(),
+    prisma.validation.deleteMany(),
     prisma.user.deleteMany(),
   ]);
 
@@ -156,7 +159,7 @@ async function main() {
     },
   });
 
-  const adminWallet = await prisma.wallet.create({
+  await prisma.wallet.create({
     data: {
       userId: adminUser.id,
       walletNumber: 'PS1112223330',

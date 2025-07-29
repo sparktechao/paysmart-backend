@@ -1,29 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length } from 'class-validator';
-
-export enum TransactionType {
-  TRANSFER = 'TRANSFER',
-  PAYMENT = 'PAYMENT',
-  DEPOSIT = 'DEPOSIT',
-  WITHDRAWAL = 'WITHDRAWAL',
-  RATEIO = 'RATEIO',
-  SMART_CONTRACT = 'SMART_CONTRACT'
-}
-
-export enum TransactionStatus {
-  PENDING = 'PENDING',
-  PROCESSING = 'PROCESSING',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED',
-  REVERSED = 'REVERSED'
-}
-
-export enum Currency {
-  AOA = 'AOA',
-  USD = 'USD',
-  EUR = 'EUR'
-}
+import { TransactionType, TransactionStatus, Currency } from '../../common/enums/transaction.enum';
 
 export class CreateTransactionDto {
   @ApiProperty({ description: 'ID da carteira de origem (opcional para DEPOSIT)' })
@@ -97,6 +74,9 @@ export class TransactionResponseDto {
 
   @ApiProperty({ enum: TransactionStatus })
   status: TransactionStatus;
+
+  @ApiProperty()
+  reference: string;
 
   @ApiProperty()
   createdAt: Date;

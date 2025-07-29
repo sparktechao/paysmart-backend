@@ -43,11 +43,27 @@ export class TransactionsController {
     @Body() createTransactionDto: CreateTransactionDto
   ): Promise<TransactionResponseDto> {
     const userId = req.user['id'];
+    
+    console.log('🎯 [CONTROLLER] Dados recebidos:', createTransactionDto);
+    console.log('🎯 [CONTROLLER] User ID:', userId);
+    
+    // Preparar dados da transação baseado no tipo
     const transactionData = {
       ...createTransactionDto,
-      fromUserId: userId,
-      toUserId: userId, // Será atualizado baseado no toWalletId
     };
+
+    // Adicionar fromUserId apenas se não for DEPOSIT
+    if (createTransactionDto.type !== 'DEPOSIT') {
+      transactionData.fromUserId = userId;
+    }
+    
+    // Adicionar toUserId apenas se não for WITHDRAWAL
+    if (createTransactionDto.type !== 'WITHDRAWAL') {
+      transactionData.toUserId = userId;
+    }
+    
+    console.log('🎯 [CONTROLLER] Dados enviados para service:', transactionData);
+    
     return this.transactionsService.createTransaction(transactionData);
   }
 

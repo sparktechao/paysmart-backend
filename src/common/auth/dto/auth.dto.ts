@@ -55,6 +55,11 @@ export class RegisterDto {
   @IsString()
   @MinLength(4)
   pin: string;
+
+  @ApiProperty({ description: 'Número de telefone do usuário premium que vai validar a conta' })
+  @IsString()
+  @Matches(/^\+244[0-9]{9}$/, { message: 'Telefone do validador deve estar no formato +244XXXXXXXXX' })
+  referrerPhone: string;
 }
 
 export class RefreshTokenDto {

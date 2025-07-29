@@ -19,6 +19,8 @@ import { SupportModule } from './support/support.module';
 import { SharedWalletsModule } from './shared-wallets/shared-wallets.module';
 import { SmartContractsModule } from './smart-contracts/smart-contracts.module';
 import { RateioModule } from './rateio/rateio.module';
+import { ValidationsModule } from './validations/validations.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -45,6 +47,8 @@ import { RateioModule } from './rateio/rateio.module';
     SharedWalletsModule,
     SmartContractsModule,
     RateioModule,
+    ValidationsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

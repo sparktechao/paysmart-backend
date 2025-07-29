@@ -15,7 +15,7 @@ export class AuthService {
   ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { phone, pin, ...userData } = registerDto;
+    const { phone, pin, referrerPhone, ...userData } = registerDto;
 
     // Verificar se o telefone já existe
     const existingUser = await this.prisma.user.findUnique({
@@ -26,17 +26,39 @@ export class AuthService {
       throw new BadRequestException('Telefone já registrado');
     }
 
+    // Verificar se o validador (usuário premium) existe
+    const validator = await this.prisma.user.findUnique({
+      where: { phone: referrerPhone },
+    });
+
+    if (!validator) {
+      throw new BadRequestException('Usuário premium validador não encontrado');
+    }
+
+    // Verificar se o validador é premium
+    if (validator.userType !== 'PREMIUM') {
+      throw new BadRequestException('Apenas usuários premium podem validar novas contas');
+    }
+
+    // Verificar se o validador está ativo
+    if (validator.status !== 'ACTIVE') {
+      throw new BadRequestException('Validador deve estar com conta ativa');
+    }
+
     // Hash do PIN
     const hashedPin = await bcrypt.hash(pin, 12);
 
-    // Criar usuário e carteira padrão
-    const user = await this.prisma.$transaction(async (prisma) => {
+    // Criar usuário, carteira padrão e validação
+    const result = await this.prisma.$transaction(async (prisma) => {
+      // Criar novo usuário
       const newUser = await prisma.user.create({
         data: {
           ...userData,
           phone,
+          dateOfBirth: new Date(userData.dateOfBirth),
+          documentExpiry: new Date(userData.documentExpiry),
           userType: 'BASIC',
-          status: 'PENDING',
+          status: 'PENDING', // Aguarda validação
         },
       });
 
@@ -65,22 +87,32 @@ export class AuthService {
         },
       });
 
-      return { ...newUser, wallet };
+      // Criar validação pendente
+      const validation = await prisma.validation.create({
+        data: {
+          userId: newUser.id,
+          validatorId: validator.id,
+          status: 'PENDING',
+          notes: `Validação solicitada para ${newUser.firstName} ${newUser.lastName}`,
+        },
+      });
+
+      return { newUser, wallet, validation };
     });
 
-    // Gerar tokens
-    const tokens = await this.generateTokens(user.id, user.phone);
+    // Gerar tokens (usuário pode fazer login mas com limitações)
+    const tokens = await this.generateTokens(result.newUser.id, result.newUser.phone);
 
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       user: {
-        id: user.id,
-        phone: user.phone,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        userType: user.userType,
-        status: user.status,
+        id: result.newUser.id,
+        phone: result.newUser.phone,
+        firstName: result.newUser.firstName,
+        lastName: result.newUser.lastName,
+        userType: result.newUser.userType,
+        status: result.newUser.status,
       },
     };
   }

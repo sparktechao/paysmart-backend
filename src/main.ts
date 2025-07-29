@@ -37,7 +37,7 @@ async function bootstrap() {
   setupSwagger(app);
 
   const port = configService.get('PORT', 3000);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   
   console.log(`🚀 PaySmart Premium API rodando na porta ${port}`);
   console.log(`📚 Documentação disponível em: http://localhost:${port}/api-docs`);
