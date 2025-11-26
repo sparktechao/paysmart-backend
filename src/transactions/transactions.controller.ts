@@ -29,7 +29,10 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Criar nova transação' })
+  @ApiOperation({ 
+    summary: 'Criar nova transação',
+    description: 'Cria uma nova transação. Para transferências, pode usar toWalletId ou toPhone (número de telefone do destinatário). Se usar toPhone, o sistema automaticamente usará a carteira padrão do usuário.'
+  })
   @ApiResponse({ 
     status: 201, 
     description: 'Transação criada com sucesso',
@@ -38,6 +41,7 @@ export class TransactionsController {
   @ApiResponse({ status: 400, description: 'Dados inválidos' })
   @ApiResponse({ status: 401, description: 'Não autorizado' })
   @ApiResponse({ status: 403, description: 'Saldo insuficiente' })
+  @ApiResponse({ status: 404, description: 'Carteira ou usuário não encontrado' })
   async createTransaction(
     @Req() req: Request,
     @Body() createTransactionDto: CreateTransactionDto
@@ -46,7 +50,7 @@ export class TransactionsController {
     const transactionData = {
       ...createTransactionDto,
       fromUserId: userId,
-      toUserId: userId, // Será atualizado baseado no toWalletId
+      // toUserId será determinado pelo service baseado no toWalletId ou toPhone
     };
     return this.transactionsService.createTransaction(transactionData);
   }

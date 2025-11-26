@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length, ValidateIf, IsPhoneNumber } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length, ValidateIf } from 'class-validator';
 import { TransactionType, TransactionStatus, Currency } from '../../common/enums/transaction.enum';
 
 export class CreateTransactionDto {

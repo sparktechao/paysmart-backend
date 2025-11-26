@@ -7,7 +7,8 @@ RUN apk add --no-cache \
     g++ \
     libc6-compat \
     openssl \
-    openssl-dev
+    openssl-dev \
+    postgresql-client
 
 # Criar diretório da aplicação
 WORKDIR /app
@@ -16,8 +17,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Instalar dependências
-RUN npm ci --only=production && npm cache clean --force
+# Instalar todas as dependências (incluindo dev)
+RUN npm ci && npm cache clean --force
 
 # Gerar cliente Prisma
 RUN npx prisma generate
@@ -26,14 +27,14 @@ RUN npx prisma generate
 COPY . .
 
 # Criar diretórios necessários
-RUN mkdir -p uploads logs
+RUN mkdir -p uploads logs && \
+    chown -R node:node /app
 
 # Definir permissões
-RUN chown -R node:node /app
 USER node
 
 # Expor porta
 EXPOSE 3000
 
-# Comando para iniciar a aplicação
+# Comando padrão (será sobrescrito pelo docker-compose se necessário)
 CMD ["npm", "run", "start:dev"] 

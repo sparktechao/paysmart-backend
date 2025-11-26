@@ -3,8 +3,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Injectable()
 export class CustomThrottlerGuard extends ThrottlerGuard {
-  protected override getTracker(req: Record<string, any>): string {
+  protected override async getTracker(req: Record<string, any>): Promise<string> {
     // Usar IP do usuário como tracker
-    return req.ips.length ? req.ips[0] : req.ip;
+    return req.ips?.length ? req.ips[0] : req.ip || 'unknown';
   }
 } 

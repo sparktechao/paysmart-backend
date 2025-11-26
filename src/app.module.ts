@@ -19,6 +19,8 @@ import { SupportModule } from './support/support.module';
 import { SharedWalletsModule } from './shared-wallets/shared-wallets.module';
 import { SmartContractsModule } from './smart-contracts/smart-contracts.module';
 import { RateioModule } from './rateio/rateio.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -27,8 +29,10 @@ import { RateioModule } from './rateio/rateio.module';
     QueueModule,
     LoggerModule,
     ThrottlerModule.forRoot({
-      ttl: 60000,
-      limit: 100,
+      throttlers: [{
+        ttl: 60000,
+        limit: 100,
+      }]
     }),
     ScheduleModule.forRoot(),
     AuthModule,
@@ -46,5 +50,7 @@ import { RateioModule } from './rateio/rateio.module';
     SmartContractsModule,
     RateioModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

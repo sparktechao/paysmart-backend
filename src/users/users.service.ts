@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -11,10 +11,13 @@ import {
   UserResponseDto,
   ValidationRequestDto 
 } from './dto/users.dto';
-import { User } from '@prisma/client';
+import { User, Wallet } from '@prisma/client';
+import { WalletResponseDto } from '../wallets/dto/wallets.dto';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
@@ -24,15 +27,23 @@ export class UsersService {
   ) {}
 
   async findById(userId: string): Promise<UserResponseDto> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const [user, wallets] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+      }),
+      this.prisma.wallet.findMany({
+        where: { userId },
+        orderBy: { isDefault: 'desc' },
+      }),
+    ]);
 
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    return this.mapToUserResponse(user);
+    const defaultWallet = wallets.find(w => w.isDefault) || wallets[0];
+
+    return this.mapToUserResponse(user, wallets, defaultWallet);
   }
 
   async findByPhone(phone: string): Promise<UserResponseDto> {
@@ -44,7 +55,14 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    return this.mapToUserResponse(user);
+    const wallets = await this.prisma.wallet.findMany({
+      where: { userId: user.id },
+      orderBy: { isDefault: 'desc' },
+    });
+
+    const defaultWallet = wallets.find(w => w.isDefault) || wallets[0];
+
+    return this.mapToUserResponse(user, wallets, defaultWallet);
   }
 
   async updateUser(userId: string, updateUserDto: UpdateUserDto): Promise<UserResponseDto> {
@@ -53,7 +71,15 @@ export class UsersService {
       data: updateUserDto,
     });
 
-    return this.mapToUserResponse(user);
+    // Buscar carteiras após atualizar usuário
+    const wallets = await this.prisma.wallet.findMany({
+      where: { userId: user.id },
+      orderBy: { isDefault: 'desc' },
+    });
+
+    const defaultWallet = wallets.find(w => w.isDefault) || wallets[0];
+
+    return this.mapToUserResponse(user, wallets, defaultWallet);
   }
 
   async requestValidation(requestValidationDto: RequestValidationDto): Promise<{ message: string }> {
@@ -311,7 +337,7 @@ export class UsersService {
       ]);
 
       if (!validatorWallet || !validatedUserWallet) {
-        console.error('Carteiras não encontradas para recompensa de validação');
+        this.logger.warn('Carteiras não encontradas para recompensa de validação', { validatorId, validatedUserId });
         return;
       }
 
@@ -341,11 +367,32 @@ export class UsersService {
         },
       });
     } catch (error) {
-      console.error('Erro ao processar recompensa de validação:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('Erro ao processar recompensa de validação', errorStack, { validatorId, validatedUserId, error: errorMessage });
     }
   }
 
-  private mapToUserResponse(user: User): UserResponseDto {
+  private mapToUserResponse(
+    user: User,
+    wallets?: Wallet[],
+    defaultWallet?: Wallet,
+  ): UserResponseDto {
+    const mapToWalletResponse = (wallet: Wallet): WalletResponseDto => ({
+      id: wallet.id,
+      userId: wallet.userId,
+      walletNumber: wallet.walletNumber,
+      accountType: wallet.accountType as any,
+      balances: wallet.balances as Record<string, number>,
+      limits: wallet.limits as Record<string, any>,
+      status: wallet.status,
+      isDefault: wallet.isDefault,
+      businessInfo: wallet.businessInfo as Record<string, any> | undefined,
+      merchantInfo: wallet.merchantInfo as Record<string, any> | undefined,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+    });
+
     return {
       id: user.id,
       phone: user.phone,
@@ -356,6 +403,8 @@ export class UsersService {
       status: user.status,
       validationScore: user.validationScore,
       validators: user.validators,
+      defaultWallet: defaultWallet ? mapToWalletResponse(defaultWallet) : undefined,
+      wallets: wallets && wallets.length > 0 ? wallets.map(mapToWalletResponse) : undefined,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

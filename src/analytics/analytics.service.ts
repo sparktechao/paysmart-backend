@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { AccountType } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async getDashboard(userId: string, filter: any) {
@@ -205,32 +208,41 @@ export class AnalyticsService {
   }
 
   async generateDailyReports() {
-    console.log('Gerando relatórios diários...');
+    this.logger.log('Gerando relatórios diários');
     
     try {
       await this.generateSystemReport('day');
+      this.logger.log('Relatórios diários gerados com sucesso');
     } catch (error) {
-      console.error('Erro ao gerar relatórios diários:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('Erro ao gerar relatórios diários', errorStack, { error: errorMessage });
     }
   }
 
   async generateWeeklyReports() {
-    console.log('Gerando relatórios semanais...');
+    this.logger.log('Gerando relatórios semanais');
     
     try {
       await this.generateSystemReport('week');
+      this.logger.log('Relatórios semanais gerados com sucesso');
     } catch (error) {
-      console.error('Erro ao gerar relatórios semanais:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('Erro ao gerar relatórios semanais', errorStack, { error: errorMessage });
     }
   }
 
   async generateMonthlyReports() {
-    console.log('Gerando relatórios mensais...');
+    this.logger.log('Gerando relatórios mensais');
     
     try {
       await this.generateSystemReport('month');
+      this.logger.log('Relatórios mensais gerados com sucesso');
     } catch (error) {
-      console.error('Erro ao gerar relatórios mensais:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('Erro ao gerar relatórios mensais', errorStack, { error: errorMessage });
     }
   }
 
@@ -360,5 +372,288 @@ export class AnalyticsService {
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async generateMonthlyReportsCron() {
     await this.generateMonthlyReports();
+  }
+
+  // Funcionalidades específicas para BUSINESS
+
+  async getBusinessReports(userId: string, period: 'week' | 'month' | 'year' = 'month') {
+    // Verificar se o usuário tem carteira BUSINESS
+    const businessWallets = await this.prisma.wallet.findMany({
+      where: {
+        userId,
+        accountType: AccountType.BUSINESS,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (businessWallets.length === 0) {
+      throw new BadRequestException('Usuário não possui carteira BUSINESS');
+    }
+
+    const startDate = this.getStartDate(period);
+    const endDate = new Date();
+
+    // Obter transações de todas as carteiras BUSINESS do usuário
+    const walletIds = businessWallets.map(w => w.id);
+    
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        OR: [
+          { fromWalletId: { in: walletIds } },
+          { toWalletId: { in: walletIds } },
+        ],
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
+    // Calcular estatísticas
+    const totalRevenue = transactions
+      .filter(t => walletIds.includes(t.toWalletId || ''))
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    const totalExpenses = transactions
+      .filter(t => walletIds.includes(t.fromWalletId || ''))
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const netProfit = totalRevenue - totalExpenses;
+
+    // Agrupar por moeda
+    const byCurrency = transactions.reduce((acc, t) => {
+      const currency = t.currency;
+      if (!acc[currency]) {
+        acc[currency] = { revenue: 0, expenses: 0, transactions: 0 };
+      }
+      if (walletIds.includes(t.toWalletId || '')) {
+        acc[currency].revenue += t.amount;
+      }
+      if (walletIds.includes(t.fromWalletId || '')) {
+        acc[currency].expenses += t.amount;
+      }
+      acc[currency].transactions++;
+      return acc;
+    }, {} as Record<string, { revenue: number; expenses: number; transactions: number }>);
+
+    return {
+      period,
+      startDate,
+      endDate,
+      businessWallets: businessWallets.map(w => ({
+        id: w.id,
+        walletNumber: w.walletNumber,
+        companyName: (w.businessInfo as any)?.companyName || 'N/A',
+        taxId: (w.businessInfo as any)?.taxId || 'N/A',
+      })),
+      summary: {
+        totalRevenue,
+        totalExpenses,
+        netProfit,
+        totalTransactions: transactions.length,
+      },
+      byCurrency,
+      transactions: transactions.slice(0, 100), // Últimas 100 transações
+    };
+  }
+
+  async generateBusinessFiscalReport(userId: string, year: number, month?: number) {
+    // Verificar se o usuário tem carteira BUSINESS
+    const businessWallets = await this.prisma.wallet.findMany({
+      where: {
+        userId,
+        accountType: AccountType.BUSINESS,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (businessWallets.length === 0) {
+      throw new BadRequestException('Usuário não possui carteira BUSINESS');
+    }
+
+    const startDate = month 
+      ? new Date(year, month - 1, 1)
+      : new Date(year, 0, 1);
+    const endDate = month
+      ? new Date(year, month, 0, 23, 59, 59)
+      : new Date(year, 11, 31, 23, 59, 59);
+
+    const walletIds = businessWallets.map(w => w.id);
+    
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        OR: [
+          { fromWalletId: { in: walletIds } },
+          { toWalletId: { in: walletIds } },
+        ],
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+        status: 'COMPLETED',
+      },
+    });
+
+    // Preparar relatório fiscal
+    const report = {
+      period: month ? `${year}-${String(month).padStart(2, '0')}` : year.toString(),
+      businessInfo: businessWallets.map(w => ({
+        walletNumber: w.walletNumber,
+        companyName: (w.businessInfo as any)?.companyName || 'N/A',
+        taxId: (w.businessInfo as any)?.taxId || 'N/A',
+        registrationNumber: (w.businessInfo as any)?.registrationNumber || 'N/A',
+        businessAddress: (w.businessInfo as any)?.businessAddress || {},
+      })),
+      transactions: transactions.map(t => ({
+        date: t.createdAt,
+        reference: t.reference,
+        type: t.type,
+        amount: t.amount,
+        currency: t.currency,
+        description: t.description,
+        isRevenue: walletIds.includes(t.toWalletId || ''),
+        isExpense: walletIds.includes(t.fromWalletId || ''),
+      })),
+      summary: {
+        totalRevenue: transactions
+          .filter(t => walletIds.includes(t.toWalletId || ''))
+          .reduce((sum, t) => sum + t.amount, 0),
+        totalExpenses: transactions
+          .filter(t => walletIds.includes(t.fromWalletId || ''))
+          .reduce((sum, t) => sum + t.amount, 0),
+        totalTransactions: transactions.length,
+      },
+      generatedAt: new Date(),
+    };
+
+    // Salvar relatório
+    const savedReport = await this.prisma.analytics.create({
+      data: {
+        userId,
+        type: 'BUSINESS_FISCAL_REPORT',
+        data: report,
+        period: month ? 'MONTHLY' : 'YEARLY',
+      },
+    });
+
+    return {
+      reportId: savedReport.id,
+      report,
+    };
+  }
+
+  async getBusinessAuthorizedUsers(walletId: string, userId: string) {
+    // Verificar se a carteira pertence ao usuário e é BUSINESS
+    const wallet = await this.prisma.wallet.findFirst({
+      where: {
+        id: walletId,
+        userId,
+        accountType: AccountType.BUSINESS,
+      },
+    });
+
+    if (!wallet) {
+      throw new BadRequestException('Carteira BUSINESS não encontrada');
+    }
+
+    const businessInfo = wallet.businessInfo as any;
+    const authorizedUserIds = businessInfo?.authorizedUsers || [];
+
+    if (authorizedUserIds.length === 0) {
+      return { authorizedUsers: [] };
+    }
+
+    const authorizedUsers = await this.prisma.user.findMany({
+      where: {
+        id: { in: authorizedUserIds },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        status: true,
+      },
+    });
+
+    return { authorizedUsers };
+  }
+
+  async addBusinessAuthorizedUser(walletId: string, userId: string, authorizedUserId: string) {
+    const wallet = await this.prisma.wallet.findFirst({
+      where: {
+        id: walletId,
+        userId,
+        accountType: AccountType.BUSINESS,
+      },
+    });
+
+    if (!wallet) {
+      throw new BadRequestException('Carteira BUSINESS não encontrada');
+    }
+
+    // Verificar se o usuário autorizado existe
+    const authorizedUser = await this.prisma.user.findUnique({
+      where: { id: authorizedUserId },
+    });
+
+    if (!authorizedUser) {
+      throw new BadRequestException('Usuário autorizado não encontrado');
+    }
+
+    const businessInfo = wallet.businessInfo as any || {};
+    const authorizedUsers = businessInfo.authorizedUsers || [];
+
+    if (authorizedUsers.includes(authorizedUserId)) {
+      throw new BadRequestException('Usuário já está autorizado');
+    }
+
+    // Adicionar usuário autorizado
+    const updatedBusinessInfo = {
+      ...businessInfo,
+      authorizedUsers: [...authorizedUsers, authorizedUserId],
+    };
+
+    await this.prisma.wallet.update({
+      where: { id: walletId },
+      data: { businessInfo: updatedBusinessInfo },
+    });
+
+    return { message: 'Usuário autorizado adicionado com sucesso' };
+  }
+
+  async removeBusinessAuthorizedUser(walletId: string, userId: string, authorizedUserId: string) {
+    const wallet = await this.prisma.wallet.findFirst({
+      where: {
+        id: walletId,
+        userId,
+        accountType: AccountType.BUSINESS,
+      },
+    });
+
+    if (!wallet) {
+      throw new BadRequestException('Carteira BUSINESS não encontrada');
+    }
+
+    const businessInfo = wallet.businessInfo as any || {};
+    const authorizedUsers = businessInfo.authorizedUsers || [];
+
+    if (!authorizedUsers.includes(authorizedUserId)) {
+      throw new BadRequestException('Usuário não está autorizado');
+    }
+
+    // Remover usuário autorizado
+    const updatedBusinessInfo = {
+      ...businessInfo,
+      authorizedUsers: authorizedUsers.filter((id: string) => id !== authorizedUserId),
+    };
+
+    await this.prisma.wallet.update({
+      where: { id: walletId },
+      data: { businessInfo: updatedBusinessInfo },
+    });
+
+    return { message: 'Usuário autorizado removido com sucesso' };
   }
 }

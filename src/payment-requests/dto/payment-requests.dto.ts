@@ -1,11 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min } from 'class-validator';
 import { RequestStatus, RequestCategory } from '@prisma/client';
 
 export class CreatePaymentRequestDto {
-  @ApiProperty({ description: 'ID do usuário que receberá o pagamento' })
+  @ApiPropertyOptional({ description: 'ID do usuário que receberá o pagamento. Se não fornecido, cria um payment link público (qualquer um pode pagar)' })
+  @IsOptional()
   @IsString()
-  payerId: string;
+  payerId?: string;
 
   @ApiProperty({ description: 'Valor solicitado' })
   @IsNumber()
@@ -67,6 +68,34 @@ export class PaymentRequestResponseDto {
 
   @ApiProperty({ required: false })
   metadata?: any;
+
+  @ApiPropertyOptional({ 
+    description: 'Dados para gerar QR code no frontend (apenas se requester for MERCHANT com QR habilitado)',
+    example: {
+      paymentUrl: 'http://localhost:3000/payment/123',
+      qrOptions: {
+        size: 300,
+        margin: 2,
+        errorCorrectionLevel: 'M'
+      },
+      merchantInfo: {
+        storeName: 'Loja Exemplo',
+        category: 'Retail'
+      }
+    }
+  })
+  qrData?: {
+    paymentUrl: string;
+    qrOptions?: {
+      size?: number;
+      margin?: number;
+      errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
+    };
+    merchantInfo?: {
+      storeName?: string;
+      category?: string;
+    };
+  };
 }
 
 export class PaymentRequestFilterDto {
@@ -89,4 +118,45 @@ export class PaymentRequestFilterDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+}
+
+export class PaymentQRDataDto {
+  @ApiProperty({ description: 'URL do pagamento para gerar QR code' })
+  paymentUrl: string;
+
+  @ApiProperty({ description: 'ID do pedido de pagamento' })
+  paymentRequestId: string;
+
+  @ApiProperty({ description: 'Valor do pagamento' })
+  amount: number;
+
+  @ApiProperty({ description: 'Moeda do pagamento' })
+  currency: string;
+
+  @ApiProperty({ description: 'Descrição do pagamento' })
+  description: string;
+
+  @ApiProperty({ description: 'Data de expiração', required: false })
+  expiresAt?: Date;
+
+  @ApiProperty({ description: 'Informações do merchant', required: false })
+  merchantInfo?: {
+    storeName?: string;
+    category?: string;
+  };
+
+  @ApiProperty({ 
+    description: 'Opções para geração do QR code no frontend',
+    required: false,
+    example: {
+      size: 300,
+      margin: 2,
+      errorCorrectionLevel: 'M'
+    }
+  })
+  qrOptions?: {
+    size?: number;
+    margin?: number;
+    errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
+  };
 } 

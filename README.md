@@ -7,6 +7,9 @@ O **PaySmart Premium** é uma API revolucionária para carteira digital avançad
 - ✅ **Validação Peer-to-Peer**: Sistema de validação entre usuários
 - ✅ **Pedidos de Pagamento com QR Code**: Geração automática de QR codes para pagamentos
 - ✅ **Carteiras Multi-moeda e Compartilhadas**: Suporte a AOA, USD, EUR e carteiras compartilhadas
+- ✅ **Múltiplos Tipos de Conta**: Um usuário pode ter carteiras PERSONAL, BUSINESS e MERCHANT simultaneamente
+- ✅ **Funcionalidades BUSINESS**: Relatórios fiscais, gestão de múltiplos usuários autorizados
+- ✅ **Funcionalidades MERCHANT**: QR codes, links de pagamento, dashboard de vendas
 - ✅ **Gamificação e Analytics**: Sistema de recompensas e análises avançadas
 - ✅ **Operações Tipo Smart Contract**: Transferências condicionais com confirmação manual
 - ✅ **Transferências com Rateio Direto**: Divisão automática de valores em múltiplos destinatários
@@ -187,7 +190,8 @@ http://localhost:3000/api-docs
 
 #### Carteiras
 - `GET /api/v1/wallets` - Listar carteiras
-- `POST /api/v1/wallets` - Criar carteira
+- `POST /api/v1/wallets` - Criar carteira (PERSONAL, BUSINESS ou MERCHANT)
+- `PUT /api/v1/wallets/:id` - Atualizar carteira
 - `GET /api/v1/wallets/:id/balance` - Obter saldo
 
 #### Transações
@@ -197,8 +201,46 @@ http://localhost:3000/api-docs
 
 #### Pedidos de Pagamento
 - `POST /api/v1/payment-requests` - Criar pedido
-- `GET /api/v1/payment-requests/:id/qr` - Gerar QR code
+- `GET /api/v1/payment-requests/:id/qr-code` - Gerar QR code (MERCHANT)
 - `POST /api/v1/payment-requests/:id/pay` - Pagar pedido
+- `GET /api/v1/payment-requests/merchant/stats` - Estatísticas do merchant
+- `POST /api/v1/payment-requests/merchant/payment-link` - Gerar link de pagamento (MERCHANT)
+- `GET /api/v1/payment-requests/merchant/payment-links` - Listar links de pagamento (MERCHANT)
+
+## 💼 Tipos de Conta (AccountType)
+
+O sistema suporta três tipos de conta na carteira, permitindo que um usuário tenha múltiplas carteiras de tipos diferentes:
+
+### PERSONAL (Pessoal)
+- Limites padrão de transação
+- Funcionalidades básicas de carteira digital
+- Ideal para uso pessoal
+
+### BUSINESS (Empresa)
+- Limites maiores de transação
+- Relatórios fiscais e financeiros
+- Gestão de múltiplos usuários autorizados
+- Informações da empresa (NIF, registro, endereço comercial)
+- Ideal para empresas e negócios
+
+### MERCHANT (Comerciante)
+- Limites ainda maiores
+- QR codes para pagamentos
+- Links de pagamento públicos
+- Dashboard de vendas
+- Informações da loja (nome, categoria, descrição)
+- Ideal para lojistas e comerciantes
+
+### Diferença entre UserType e AccountType
+
+- **UserType**: Define o nível/permissões do usuário (BASIC, PREMIUM, ADMIN)
+  - BASIC: Usuário básico
+  - PREMIUM: Pode validar outros usuários
+  - ADMIN: Administrador do sistema
+
+- **AccountType**: Define o tipo de conta da carteira (PERSONAL, BUSINESS, MERCHANT)
+  - Uma carteira pode ser de um tipo específico
+  - Um usuário pode ter múltiplas carteiras de tipos diferentes
 
 ## 🔐 Funcionalidades de Segurança
 
