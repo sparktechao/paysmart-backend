@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length, ValidateIf } from 'class-validator';
 import { TransactionType, TransactionStatus, Currency } from '../../common/enums/transaction.enum';
 
 export class CreateTransactionDto {
@@ -8,10 +8,24 @@ export class CreateTransactionDto {
   @IsString()
   fromWalletId?: string;
 
-  @ApiProperty({ description: 'ID da carteira de destino (opcional para WITHDRAWAL)' })
+  @ApiProperty({ 
+    description: 'ID da carteira de destino (opcional para WITHDRAWAL). Não usar junto com toPhone',
+    required: false
+  })
   @IsOptional()
   @IsString()
+  @ValidateIf((o) => !o.toPhone)
   toWalletId?: string;
+
+  @ApiProperty({ 
+    description: 'Número de telefone do usuário de destino (alternativa ao toWalletId). Sistema usará a carteira padrão',
+    required: false,
+    example: '+244987654321'
+  })
+  @IsOptional()
+  @IsString()
+  @ValidateIf((o) => !o.toWalletId)
+  toPhone?: string;
 
   @ApiProperty({ description: 'ID do usuário de origem (opcional para DEPOSIT)' })
   @IsOptional()

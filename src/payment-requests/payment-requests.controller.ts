@@ -44,7 +44,7 @@ export class PaymentRequestsController {
     const userId = req.user['id'];
     return this.paymentRequestsService.createPaymentRequest({
       requesterId: userId,
-      payerId: createPaymentRequestDto.payerId,
+      payerId: createPaymentRequestDto.payerId || null, // Permite null para payment links públicos
       amount: createPaymentRequestDto.amount,
       currency: Currency.AOA, // Default currency
       description: createPaymentRequestDto.description,
@@ -182,5 +182,65 @@ export class PaymentRequestsController {
   ) {
     const userId = req.user['id'];
     return this.paymentRequestsService.getPaymentRequestStats(userId);
+  }
+
+  // Endpoints específicos para MERCHANT
+
+  @Get('merchant/stats')
+  @ApiOperation({ summary: 'Estatísticas do merchant (apenas para carteiras MERCHANT)' })
+  @ApiResponse({ status: 200, description: 'Estatísticas do merchant' })
+  @ApiResponse({ status: 400, description: 'Usuário não possui carteira MERCHANT' })
+  async getMerchantStats(@Req() req: Request) {
+    const userId = req.user['id'];
+    return this.paymentRequestsService.getMerchantStats(userId);
+  }
+
+  @Get('merchant/payment-links')
+  @ApiOperation({ summary: 'Listar links de pagamento do merchant' })
+  @ApiResponse({ status: 200, description: 'Lista de links de pagamento' })
+  @ApiResponse({ status: 400, description: 'Usuário não possui carteira MERCHANT' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getMerchantPaymentLinks(
+    @Req() req: Request,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20
+  ) {
+    const userId = req.user['id'];
+    return this.paymentRequestsService.getMerchantPaymentLinks(userId, page, limit);
+  }
+
+  @Post('merchant/payment-link')
+  @ApiOperation({ summary: 'Gerar link de pagamento (apenas para carteiras MERCHANT)' })
+  @ApiResponse({ status: 201, description: 'Link de pagamento gerado com sucesso' })
+  @ApiResponse({ status: 400, description: 'Usuário não possui carteira MERCHANT ou links não estão habilitados' })
+  async generatePaymentLink(
+    @Req() req: Request,
+    @Body() body: { amount: number; currency: Currency; description: string; expiresInDays?: number }
+  ) {
+    const userId = req.user['id'];
+    return this.paymentRequestsService.generatePaymentLink(
+      userId,
+      body.amount,
+      body.currency,
+      body.description,
+      body.expiresInDays
+    );
+  }
+
+  @Get(':id/qr-code')
+  @ApiOperation({ 
+    summary: 'Gerar QR Code como imagem (apenas para carteiras MERCHANT)',
+    description: 'Retorna a imagem do QR code em base64. Para melhor performance, use os dados do campo qrData na resposta do payment request e gere o QR code no frontend.'
+  })
+  @ApiResponse({ status: 200, description: 'QR Code gerado (data URL)' })
+  @ApiResponse({ status: 400, description: 'Usuário não possui carteira MERCHANT ou QR Code não está habilitado' })
+  async generatePaymentQRCode(
+    @Req() req: Request,
+    @Param('id') id: string
+  ) {
+    const userId = req.user['id'];
+    const qrCode = await this.paymentRequestsService.generatePaymentQRCode(id, userId);
+    return { qrCode };
   }
 }

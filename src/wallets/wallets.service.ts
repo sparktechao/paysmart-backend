@@ -1,16 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
-
-export interface WalletResponseDto {
-  id: string;
-  walletNumber: string;
-  balances: Record<string, number>;
-  limits: Record<string, any>;
-  status: string;
-  isDefault: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { Wallet } from '@prisma/client';
+import { CreateWalletDto, UpdateWalletDto, WalletResponseDto } from './dto/wallets.dto';
+import { AccountType } from '../common/enums/account-type.enum';
+import * as bcrypt from 'bcryptjs';
 
 export interface WalletBalanceDto {
   walletId: string;
@@ -56,16 +49,24 @@ export class WalletsService {
       orderBy: { isDefault: 'desc' },
     });
 
-    return wallets.map(wallet => ({
+    return wallets.map(wallet => this.formatWalletResponse(wallet));
+  }
+
+  private formatWalletResponse(wallet: Wallet): WalletResponseDto {
+    return {
       id: wallet.id,
+      userId: wallet.userId,
       walletNumber: wallet.walletNumber,
+      accountType: wallet.accountType as AccountType,
       balances: wallet.balances as Record<string, number>,
       limits: wallet.limits as Record<string, any>,
       status: wallet.status,
       isDefault: wallet.isDefault,
+      businessInfo: wallet.businessInfo as Record<string, any> | undefined,
+      merchantInfo: wallet.merchantInfo as Record<string, any> | undefined,
       createdAt: wallet.createdAt,
       updatedAt: wallet.updatedAt,
-    }));
+    };
   }
 
   async getWalletById(walletId: string, userId: string): Promise<WalletResponseDto> {
@@ -80,16 +81,7 @@ export class WalletsService {
       throw new NotFoundException('Carteira não encontrada ou não pertence ao usuário');
     }
 
-    return {
-      id: wallet.id,
-      walletNumber: wallet.walletNumber,
-      balances: wallet.balances as Record<string, number>,
-      limits: wallet.limits as Record<string, any>,
-      status: wallet.status,
-      isDefault: wallet.isDefault,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-    };
+    return this.formatWalletResponse(wallet);
   }
 
   async getWalletBalance(walletId: string, userId: string): Promise<WalletBalanceDto> {
@@ -110,7 +102,7 @@ export class WalletsService {
     };
   }
 
-  async createWallet(userId: string, data: any): Promise<WalletResponseDto> {
+  async createWallet(userId: string, createWalletDto: CreateWalletDto): Promise<WalletResponseDto> {
     // Verificar se o usuário já tem o máximo de carteiras permitidas
     const existingWallets = await this.prisma.wallet.count({
       where: { userId },
@@ -120,50 +112,60 @@ export class WalletsService {
       throw new BadRequestException('Máximo de 5 carteiras permitidas por usuário');
     }
 
-    // Gerar número da carteira único
-    const walletNumber = this.generateWalletNumber();
+    // Validar informações obrigatórias baseadas no accountType
+    this.validateWalletData(createWalletDto);
 
-    // Verificar se o número já existe
-    const existingWallet = await this.prisma.wallet.findUnique({
+    // Verificar se já existe carteira padrão e se esta deve ser padrão
+    if (createWalletDto.isDefault) {
+      await this.unsetDefaultWallet(userId);
+    } else {
+      // Se não especificado e não há carteira padrão, tornar esta padrão
+      if (existingWallets === 0) {
+        createWalletDto.isDefault = true;
+      }
+    }
+
+    // Gerar número da carteira único
+    let walletNumber = this.generateWalletNumber();
+    
+    // Verificar se o número já existe e gerar novo se necessário
+    let existingWallet = await this.prisma.wallet.findUnique({
       where: { walletNumber },
     });
-
-    if (existingWallet) {
-      // Se existir, gerar novo número
-      return this.createWallet(userId, data);
+    
+    while (existingWallet) {
+      walletNumber = this.generateWalletNumber();
+      existingWallet = await this.prisma.wallet.findUnique({
+        where: { walletNumber },
+      });
     }
+
+    // Hash do PIN
+    const hashedPin = await bcrypt.hash(createWalletDto.pin, 12);
+
+    // Definir limites baseados no tipo de conta
+    const limits = this.getLimitsByAccountType(createWalletDto.accountType);
 
     const wallet = await this.prisma.wallet.create({
       data: {
         userId,
         walletNumber,
+        accountType: createWalletDto.accountType,
         balances: { AOA: 0, USD: 0, EUR: 0 },
-        limits: {
-          dailyTransfer: 50000,
-          monthlyTransfer: 500000,
-          maxBalance: 1000000,
-          minBalance: 0,
-        },
+        limits,
         security: {
-          pin: data.pin,
+          pin: hashedPin,
           biometricEnabled: false,
           twoFactorEnabled: false,
           lastPinChange: new Date(),
         },
-        isDefault: false,
+        isDefault: createWalletDto.isDefault ?? false,
+        businessInfo: createWalletDto.businessInfo ? (createWalletDto.businessInfo as any) : null,
+        merchantInfo: createWalletDto.merchantInfo ? (createWalletDto.merchantInfo as any) : null,
       },
     });
 
-    return {
-      id: wallet.id,
-      walletNumber: wallet.walletNumber,
-      balances: wallet.balances as Record<string, number>,
-      limits: wallet.limits as Record<string, any>,
-      status: wallet.status,
-      isDefault: wallet.isDefault,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-    };
+    return this.formatWalletResponse(wallet);
   }
 
   async getDefaultWallet(userId: string): Promise<WalletResponseDto> {
@@ -178,16 +180,7 @@ export class WalletsService {
       throw new NotFoundException('Carteira padrão não encontrada');
     }
 
-    return {
-      id: wallet.id,
-      walletNumber: wallet.walletNumber,
-      balances: wallet.balances as Record<string, number>,
-      limits: wallet.limits as Record<string, any>,
-      status: wallet.status,
-      isDefault: wallet.isDefault,
-      createdAt: wallet.createdAt,
-      updatedAt: wallet.updatedAt,
-    };
+    return this.formatWalletResponse(wallet);
   }
 
   async setDefaultWallet(walletId: string, userId: string): Promise<WalletResponseDto> {
@@ -239,16 +232,7 @@ export class WalletsService {
       return updatedWallet;
     });
 
-    return {
-      id: result.id,
-      walletNumber: result.walletNumber,
-      balances: result.balances as Record<string, number>,
-      limits: result.limits as Record<string, any>,
-      status: result.status,
-      isDefault: result.isDefault,
-      createdAt: result.createdAt,
-      updatedAt: result.updatedAt,
-    };
+    return this.formatWalletResponse(result);
   }
 
   async getWalletTransactions(
@@ -339,6 +323,93 @@ export class WalletsService {
       limit,
       hasMore: offset + limit < total,
     };
+  }
+
+  async updateWallet(walletId: string, userId: string, updateWalletDto: UpdateWalletDto): Promise<WalletResponseDto> {
+    const wallet = await this.getWalletById(walletId, userId);
+
+    // Se está definindo como padrão, remover padrão de outras carteiras
+    if (updateWalletDto.isDefault === true) {
+      await this.unsetDefaultWallet(userId, walletId);
+    }
+
+    const updatedWallet = await this.prisma.wallet.update({
+      where: { id: walletId },
+      data: {
+        isDefault: updateWalletDto.isDefault,
+        businessInfo: updateWalletDto.businessInfo !== undefined ? (updateWalletDto.businessInfo as any) : wallet.businessInfo,
+        merchantInfo: updateWalletDto.merchantInfo !== undefined ? (updateWalletDto.merchantInfo as any) : wallet.merchantInfo,
+      },
+    });
+
+    return this.formatWalletResponse(updatedWallet);
+  }
+
+  private validateWalletData(dto: CreateWalletDto): void {
+    if (dto.accountType === AccountType.BUSINESS && !dto.businessInfo) {
+      throw new BadRequestException('Informações da empresa são obrigatórias para contas BUSINESS');
+    }
+
+    if (dto.accountType === AccountType.MERCHANT && !dto.merchantInfo) {
+      throw new BadRequestException('Informações do merchant são obrigatórias para contas MERCHANT');
+    }
+
+    if (dto.accountType === AccountType.BUSINESS && dto.businessInfo) {
+      if (!dto.businessInfo.companyName || !dto.businessInfo.taxId) {
+        throw new BadRequestException('Nome da empresa e NIF são obrigatórios para contas BUSINESS');
+      }
+    }
+
+    if (dto.accountType === AccountType.MERCHANT && dto.merchantInfo) {
+      if (!dto.merchantInfo.storeName || !dto.merchantInfo.category) {
+        throw new BadRequestException('Nome da loja e categoria são obrigatórios para contas MERCHANT');
+      }
+    }
+  }
+
+  private getLimitsByAccountType(accountType: AccountType): Record<string, any> {
+    switch (accountType) {
+      case AccountType.PERSONAL:
+        return {
+          dailyTransfer: 50000,
+          monthlyTransfer: 500000,
+          maxBalance: 1000000,
+          minBalance: 0,
+        };
+      case AccountType.BUSINESS:
+        return {
+          dailyTransfer: 500000,
+          monthlyTransfer: 5000000,
+          maxBalance: 10000000,
+          minBalance: 0,
+        };
+      case AccountType.MERCHANT:
+        return {
+          dailyTransfer: 1000000,
+          monthlyTransfer: 10000000,
+          maxBalance: 50000000,
+          minBalance: 0,
+        };
+      default:
+        return {
+          dailyTransfer: 50000,
+          monthlyTransfer: 500000,
+          maxBalance: 1000000,
+          minBalance: 0,
+        };
+    }
+  }
+
+  private async unsetDefaultWallet(userId: string, excludeWalletId?: string): Promise<void> {
+    const where: any = { userId, isDefault: true };
+    if (excludeWalletId) {
+      where.id = { not: excludeWalletId };
+    }
+
+    await this.prisma.wallet.updateMany({
+      where,
+      data: { isDefault: false },
+    });
   }
 
   private generateWalletNumber(): string {

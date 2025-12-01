@@ -1,33 +1,38 @@
-version: '3.8'
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3009:3000"  # Apenas app exposta
+      - "3000:3000"
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://user:pass@db:5432/paysmart
       - REDIS_URL=redis://cache:6379
+      - BULL_REDIS_URL=redis://cache:6379
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-in-production
       - JWT_EXPIRES_IN=15m
       - JWT_REFRESH_EXPIRES_IN=7d
-      - BULL_REDIS_URL=redis://cache:6379
       - SOCKET_CORS_ORIGIN=*
       - UPLOAD_DEST=./uploads
       - MAX_FILE_SIZE=10485760
+      - PORT=3000
     volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
       - ./uploads:/app/uploads
       - ./logs:/app/logs
+      - /app/node_modules
     depends_on:
-      - db
-      - cache
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
+    command: sh -c "npx prisma migrate deploy && rm -rf /app/dist && npm run start:dev"
 
   db:
     image: postgres:15-alpine
@@ -37,15 +42,14 @@ services:
       - POSTGRES_DB=paysmart
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - internal
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d paysmart"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   cache:
     image: redis:7-alpine
@@ -57,9 +61,9 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   internal:

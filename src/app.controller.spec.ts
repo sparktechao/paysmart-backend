@@ -14,9 +14,12 @@ describe('AppController', () => {
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+  describe('getInfo', () => {
+    it('should return API information', () => {
+      const result = appController.getInfo();
+      expect(result).toHaveProperty('name');
+      expect(result).toHaveProperty('version');
+      expect(result.name).toBe('PaySmart Premium API');
     });
   });
 });

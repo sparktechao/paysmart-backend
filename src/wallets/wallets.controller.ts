@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Body, Param, UseGuards, Req, Query } from '
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { WalletsService } from './wallets.service';
 import { JwtAuthGuard } from '../common/auth/guards/jwt-auth.guard';
+import { CreateWalletDto, UpdateWalletDto, WalletResponseDto } from './dto/wallets.dto';
 import { Request } from 'express';
 
 @ApiTags('wallets')
@@ -15,7 +16,8 @@ export class WalletsController {
   @ApiOperation({ summary: 'Listar todas as carteiras do usuário' })
   @ApiResponse({ 
     status: 200, 
-    description: 'Lista de carteiras do usuário ordenadas por carteira padrão primeiro' 
+    description: 'Lista de carteiras do usuário ordenadas por carteira padrão primeiro',
+    type: [WalletResponseDto]
   })
   async getUserWallets(@Req() req: Request) {
     const userId = req.user['id'];
@@ -41,7 +43,8 @@ export class WalletsController {
   @ApiOperation({ summary: 'Obter carteira específica por ID' })
   @ApiResponse({ 
     status: 200, 
-    description: 'Carteira encontrada' 
+    description: 'Carteira encontrada',
+    type: WalletResponseDto
   })
   @ApiResponse({ 
     status: 404, 
@@ -94,18 +97,28 @@ export class WalletsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Criar nova carteira para o usuário' })
-  @ApiResponse({ 
-    status: 201, 
-    description: 'Carteira criada com sucesso' 
+  @ApiOperation({ 
+    summary: 'Criar nova carteira',
+    description: 'Cria uma nova carteira. Pode ser do tipo PERSONAL, BUSINESS ou MERCHANT. BUSINESS e MERCHANT requerem informações adicionais.'
   })
-  @ApiResponse({ 
-    status: 400, 
-    description: 'Máximo de carteiras atingido (5 por usuário)' 
-  })
-  async createWallet(@Req() req: Request, @Body() data: any) {
+  @ApiResponse({ status: 201, description: 'Carteira criada com sucesso', type: WalletResponseDto })
+  @ApiResponse({ status: 400, description: 'Dados inválidos ou máximo de carteiras atingido (5 por usuário)' })
+  async createWallet(@Req() req: Request, @Body() createWalletDto: CreateWalletDto) {
     const userId = req.user['id'];
-    return this.walletsService.createWallet(userId, data);
+    return this.walletsService.createWallet(userId, createWalletDto);
+  }
+
+  @Put(':id')
+  @ApiOperation({ summary: 'Atualizar carteira' })
+  @ApiResponse({ status: 200, description: 'Carteira atualizada com sucesso', type: WalletResponseDto })
+  @ApiResponse({ status: 404, description: 'Carteira não encontrada' })
+  async updateWallet(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() updateWalletDto: UpdateWalletDto
+  ) {
+    const userId = req.user['id'];
+    return this.walletsService.updateWallet(id, userId, updateWalletDto);
   }
 
   @Put(':id/set-default')

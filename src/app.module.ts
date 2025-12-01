@@ -21,6 +21,8 @@ import { SmartContractsModule } from './smart-contracts/smart-contracts.module';
 import { RateioModule } from './rateio/rateio.module';
 import { ValidationsModule } from './validations/validations.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -29,8 +31,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
     QueueModule,
     LoggerModule,
     ThrottlerModule.forRoot({
-      ttl: 60000,
-      limit: 100,
+      throttlers: [{
+        ttl: 60000,
+        limit: 100,
+      }]
     }),
     ScheduleModule.forRoot(),
     AuthModule,
@@ -50,5 +54,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ValidationsModule,
     DashboardModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

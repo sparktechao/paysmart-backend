@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { WalletResponseDto } from '../../wallets/dto/wallets.dto';
 
 export class RequestValidationDto {
   @ApiProperty({ description: 'ID do usuário que precisa de validação' })
@@ -92,6 +93,12 @@ export class UserResponseDto {
 
   @ApiProperty()
   validators: string[];
+
+  @ApiPropertyOptional({ description: 'Carteira padrão do usuário', type: WalletResponseDto })
+  defaultWallet?: WalletResponseDto;
+
+  @ApiPropertyOptional({ description: 'Todas as carteiras do usuário', type: [WalletResponseDto] })
+  wallets?: WalletResponseDto[];
 
   @ApiProperty()
   createdAt: Date;

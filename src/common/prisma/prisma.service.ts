@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -6,6 +6,8 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  private readonly logger = new Logger(PrismaService.name);
+
   constructor() {
     super({
       log:
@@ -39,7 +41,9 @@ export class PrismaService
       try {
         await this.$executeRawUnsafe(`TRUNCATE TABLE ${tables} CASCADE;`);
       } catch (error) {
-        console.log({ error });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        this.logger.error('Erro ao limpar banco de dados de teste', errorStack, { error: errorMessage });
       }
     }
   }

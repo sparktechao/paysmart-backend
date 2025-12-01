@@ -8,7 +8,7 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { UseGuards } from '@nestjs/common';
+import { UseGuards, Logger } from '@nestjs/common';
 import { WsJwtGuard } from '../common/auth/guards/ws-jwt.guard';
 
 @WebSocketGateway({
@@ -23,6 +23,7 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   @WebSocketServer()
   server: Server;
 
+  private readonly logger = new Logger(NotificationsGateway.name);
   private userSockets: Map<string, Socket> = new Map();
 
   async handleConnection(client: Socket) {
@@ -50,9 +51,11 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       // Juntar usuário a uma sala específica
       client.join(`user:${userId}`);
       
-      console.log(`Usuário ${userId} conectado ao Socket.io`);
+      this.logger.log(`Usuário conectado ao Socket.io`, { userId });
     } catch (error) {
-      console.error('Erro na conexão Socket.io:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      this.logger.error('Erro na conexão Socket.io', errorStack, { error: errorMessage });
       client.disconnect();
     }
   }
@@ -62,7 +65,7 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     for (const [userId, socket] of this.userSockets.entries()) {
       if (socket === client) {
         this.userSockets.delete(userId);
-        console.log(`Usuário ${userId} desconectado do Socket.io`);
+        this.logger.log(`Usuário desconectado do Socket.io`, { userId });
         break;
       }
     }
@@ -134,7 +137,8 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
       const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
       return payload.sub || payload.userId;
     } catch (error) {
-      console.error('Erro ao extrair userId do token:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.warn('Erro ao extrair userId do token', { error: errorMessage });
       return null;
     }
   }

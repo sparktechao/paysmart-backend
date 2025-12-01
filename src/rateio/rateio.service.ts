@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -8,6 +8,8 @@ import { NotificationType, TransactionType } from '@prisma/client';
 
 @Injectable()
 export class RateioService {
+  private readonly logger = new Logger(RateioService.name);
+
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
@@ -183,7 +185,9 @@ export class RateioService {
             },
           });
         } catch (error) {
-          console.error(`Erro ao processar pagamento para destinatário ${recipient.id}:`, error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorStack = error instanceof Error ? error.stack : undefined;
+          this.logger.error(`Erro ao processar pagamento para destinatário ${recipient.id}`, errorStack, { recipientId: recipient.id, error: errorMessage });
           
           // Marcar como falha
           await this.prisma.rateioRecipient.update({

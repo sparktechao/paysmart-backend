@@ -100,6 +100,7 @@ async function main() {
     data: {
       userId: basicUser.id,
       walletNumber: 'PS1234567890',
+      accountType: 'PERSONAL',
       balances: { AOA: 1000, USD: 0, EUR: 0 },
       limits: {
         dailyTransfer: 50000,
@@ -121,6 +122,7 @@ async function main() {
     data: {
       userId: premiumUser1.id,
       walletNumber: 'PS9876543210',
+      accountType: 'PERSONAL',
       balances: { AOA: 5000, USD: 100, EUR: 50 },
       limits: {
         dailyTransfer: 100000,
@@ -142,6 +144,7 @@ async function main() {
     data: {
       userId: premiumUser2.id,
       walletNumber: 'PS5556667770',
+      accountType: 'PERSONAL',
       balances: { AOA: 3000, USD: 50, EUR: 25 },
       limits: {
         dailyTransfer: 100000,
@@ -163,6 +166,7 @@ async function main() {
     data: {
       userId: adminUser.id,
       walletNumber: 'PS1112223330',
+      accountType: 'PERSONAL',
       balances: { AOA: 10000, USD: 500, EUR: 250 },
       limits: {
         dailyTransfer: 1000000,
@@ -177,6 +181,190 @@ async function main() {
         lastPinChange: new Date(),
       },
       isDefault: true,
+    },
+  });
+
+  // Criar usuário com carteira BUSINESS
+  const businessUser = await prisma.user.create({
+    data: {
+      phone: '+244999888777',
+      email: 'business@test.com',
+      firstName: 'Empresa',
+      lastName: 'Exemplo',
+      dateOfBirth: new Date('2000-01-01'),
+      gender: 'OTHER',
+      documentType: 'BI',
+      documentNumber: 'BI999888',
+      documentExpiry: new Date('2030-01-01'),
+      userType: 'PREMIUM',
+      status: 'ACTIVE',
+      validationScore: 0,
+      validators: [],
+    },
+  });
+
+  await prisma.wallet.create({
+    data: {
+      userId: businessUser.id,
+      walletNumber: 'PS9998887770',
+      accountType: 'BUSINESS',
+      balances: { AOA: 50000, USD: 1000, EUR: 500 },
+      limits: {
+        dailyTransfer: 500000,
+        monthlyTransfer: 5000000,
+        maxBalance: 10000000,
+        minBalance: 0,
+      },
+      security: {
+        pin: hashedPin,
+        biometricEnabled: false,
+        twoFactorEnabled: false,
+        lastPinChange: new Date(),
+      },
+      isDefault: true,
+      businessInfo: {
+        companyName: 'Empresa Exemplo LTDA',
+        taxId: '123456789',
+        registrationNumber: 'REG123456',
+        businessAddress: {
+          street: 'Rua Comercial, 123',
+          city: 'Luanda',
+          province: 'Luanda',
+          postalCode: '1234',
+          country: 'Angola',
+        },
+        businessPhone: '+244999888777',
+        businessEmail: 'contato@empresaexemplo.ao',
+        authorizedUsers: [],
+      },
+    },
+  });
+
+  // Criar usuário com carteira MERCHANT
+  const merchantUser = await prisma.user.create({
+    data: {
+      phone: '+244777666555',
+      email: 'merchant@test.com',
+      firstName: 'Lojista',
+      lastName: 'Exemplo',
+      dateOfBirth: new Date('1995-06-15'),
+      gender: 'MALE',
+      documentType: 'BI',
+      documentNumber: 'BI777666',
+      documentExpiry: new Date('2030-01-01'),
+      userType: 'PREMIUM',
+      status: 'ACTIVE',
+      validationScore: 0,
+      validators: [],
+    },
+  });
+
+  await prisma.wallet.create({
+    data: {
+      userId: merchantUser.id,
+      walletNumber: 'PS7776665550',
+      accountType: 'MERCHANT',
+      balances: { AOA: 25000, USD: 500, EUR: 250 },
+      limits: {
+        dailyTransfer: 1000000,
+        monthlyTransfer: 10000000,
+        maxBalance: 50000000,
+        minBalance: 0,
+      },
+      security: {
+        pin: hashedPin,
+        biometricEnabled: false,
+        twoFactorEnabled: false,
+        lastPinChange: new Date(),
+      },
+      isDefault: true,
+      merchantInfo: {
+        storeName: 'Loja Exemplo',
+        category: 'Retail',
+        description: 'Loja de roupas e acessórios',
+        qrCodeEnabled: true,
+        paymentLinkEnabled: true,
+        commissionRate: 2.5,
+        settlementAccount: merchantUser.id,
+      },
+    },
+  });
+
+  // Criar usuário com múltiplas carteiras (PERSONAL + BUSINESS)
+  const multiWalletUser = await prisma.user.create({
+    data: {
+      phone: '+244666555444',
+      email: 'multiwallet@test.com',
+      firstName: 'Multi',
+      lastName: 'Carteira',
+      dateOfBirth: new Date('1992-03-20'),
+      gender: 'FEMALE',
+      documentType: 'BI',
+      documentNumber: 'BI666555',
+      documentExpiry: new Date('2030-01-01'),
+      userType: 'PREMIUM',
+      status: 'ACTIVE',
+      validationScore: 0,
+      validators: [],
+    },
+  });
+
+  await prisma.wallet.create({
+    data: {
+      userId: multiWalletUser.id,
+      walletNumber: 'PS6665554441',
+      accountType: 'PERSONAL',
+      balances: { AOA: 5000, USD: 100, EUR: 50 },
+      limits: {
+        dailyTransfer: 50000,
+        monthlyTransfer: 500000,
+        maxBalance: 1000000,
+        minBalance: 0,
+      },
+      security: {
+        pin: hashedPin,
+        biometricEnabled: false,
+        twoFactorEnabled: false,
+        lastPinChange: new Date(),
+      },
+      isDefault: true,
+    },
+  });
+
+  await prisma.wallet.create({
+    data: {
+      userId: multiWalletUser.id,
+      walletNumber: 'PS6665554442',
+      accountType: 'BUSINESS',
+      balances: { AOA: 20000, USD: 400, EUR: 200 },
+      limits: {
+        dailyTransfer: 500000,
+        monthlyTransfer: 5000000,
+        maxBalance: 10000000,
+        minBalance: 0,
+      },
+      security: {
+        pin: hashedPin,
+        biometricEnabled: false,
+        twoFactorEnabled: false,
+        lastPinChange: new Date(),
+      },
+      isDefault: false,
+      businessInfo: {
+        companyName: 'Multi Carteira Empresarial LTDA',
+        taxId: '987654321',
+        registrationNumber: 'REG987654',
+        businessAddress: {
+          street: 'Avenida Empresarial, 456',
+          city: 'Luanda',
+          province: 'Luanda',
+          postalCode: '5678',
+          country: 'Angola',
+        },
+        businessPhone: '+244666555444',
+        businessEmail: 'empresa@multicarteira.ao',
+        authorizedUsers: [],
+      },
     },
   });
 
@@ -284,6 +472,9 @@ async function main() {
   console.log('Usuário Premium 1: +244987654321 / 1234');
   console.log('Usuário Premium 2: +244555666777 / 1234');
   console.log('Admin: +244111222333 / 1234');
+  console.log('Usuário Business: +244999888777 / 1234');
+  console.log('Usuário Merchant: +244777666555 / 1234');
+  console.log('Usuário Multi-Carteira: +244666555444 / 1234');
 }
 
 main()

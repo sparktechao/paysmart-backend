@@ -1,5 +1,4 @@
-import { Test } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
+// Setup file for Jest tests
 
 // Configuração global para testes
 beforeAll(async () => {

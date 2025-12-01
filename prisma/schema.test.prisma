@@ -29,8 +29,13 @@ enum DocumentType {
 enum UserType {
   BASIC
   PREMIUM
-  BUSINESS
   ADMIN
+}
+
+enum AccountType {
+  PERSONAL
+  BUSINESS
+  MERCHANT
 }
 
 enum UserStatus {
@@ -176,11 +181,14 @@ model Wallet {
   id              String       @id @default(uuid())
   userId          String
   walletNumber    String       @unique
+  accountType     AccountType  @default(PERSONAL)
   balances        Json         // {AOA: 0, USD: 0, EUR: 0}
   limits          Json         // {dailyTransfer, monthlyTransfer, maxBalance, minBalance}
   status          WalletStatus @default(ACTIVE)
   isDefault       Boolean      @default(false)
   security        Json         // {pin (hashed), biometricEnabled, twoFactorEnabled, lastPinChange}
+  businessInfo    Json?        // {companyName, taxId, registrationNumber, businessAddress, businessPhone, businessEmail, authorizedUsers}
+  merchantInfo    Json?        // {storeName, category, description, qrCodeEnabled, paymentLinkEnabled, commissionRate, settlementAccount}
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
