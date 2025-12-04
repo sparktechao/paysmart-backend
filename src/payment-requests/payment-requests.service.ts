@@ -74,20 +74,6 @@ export class PaymentRequestsService {
       },
     });
 
-    // Gerar qrData se aplicável (NÃO-BLOQUEANTE para melhor performance)
-    // Tentar obter QR data rapidamente, mas não bloquear se demorar mais de 200ms
-    const qrDataPromise = this.generateQRDataIfApplicable(paymentRequest.id, data.requesterId)
-      .catch((error) => {
-        this.logger.warn('Erro ao gerar QR data (não crítico)', { error: error.message });
-        return undefined;
-      });
-
-    // Aguardar QR data com timeout de 200ms (balance entre performance e funcionalidade)
-    const qrData = await Promise.race([
-      qrDataPromise,
-      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 200)),
-    ]);
-
     // Notificar usuário destinatário apenas se payerId foi fornecido (NÃO-BLOQUEANTE)
     // Fire-and-forget: não esperamos pela conclusão da notificação
     if (resolvedPayerId) {
@@ -111,7 +97,7 @@ export class PaymentRequestsService {
     }
 
     // Retornar payment request imediatamente (não espera notificações)
-    return this.formatPaymentRequestResponse(paymentRequest, qrData);
+    return this.formatPaymentRequestResponse(paymentRequest);
   }
 
   async getUserPaymentRequests(userId: string, page: number = 1, limit: number = 20) {
@@ -134,16 +120,13 @@ export class PaymentRequestsService {
       }),
     ]);
 
-    // Adicionar qrData para cada payment request quando aplicável
-    const paymentRequestsWithQRData = await Promise.all(
-      paymentRequests.map(async (pr) => {
-        const qrData = await this.generateQRDataIfApplicable(pr.id, pr.requesterId);
-        return this.formatPaymentRequestResponse(pr, qrData);
-      })
+    // Formatar payment requests
+    const formattedPaymentRequests = paymentRequests.map((pr) => 
+      this.formatPaymentRequestResponse(pr)
     );
 
     return {
-      paymentRequests: paymentRequestsWithQRData,
+      paymentRequests: formattedPaymentRequests,
       pagination: {
         page,
         limit,
@@ -173,16 +156,13 @@ export class PaymentRequestsService {
       }),
     ]);
 
-    // Adicionar qrData para cada payment request quando aplicável
-    const paymentRequestsWithQRData = await Promise.all(
-      paymentRequests.map(async (pr) => {
-        const qrData = await this.generateQRDataIfApplicable(pr.id, pr.requesterId);
-        return this.formatPaymentRequestResponse(pr, qrData);
-      })
+    // Formatar payment requests
+    const formattedPaymentRequests = paymentRequests.map((pr) => 
+      this.formatPaymentRequestResponse(pr)
     );
 
     return {
-      paymentRequests: paymentRequestsWithQRData,
+      paymentRequests: formattedPaymentRequests,
       pagination: {
         page,
         limit,
@@ -212,10 +192,7 @@ export class PaymentRequestsService {
       throw new NotFoundException('Solicitação de pagamento não encontrada');
     }
 
-    // Gerar qrData se aplicável (apenas se o requester for MERCHANT)
-    const qrData = await this.generateQRDataIfApplicable(paymentRequest.id, paymentRequest.requesterId);
-
-    return this.formatPaymentRequestResponse(paymentRequest, qrData);
+    return this.formatPaymentRequestResponse(paymentRequest);
   }
 
   async approvePaymentRequest(id: string, userId: string, pin: string) {
@@ -368,21 +345,7 @@ export class PaymentRequestsService {
       transactionId: transaction.id 
     });
 
-    // 7. Gerar qrData se aplicável (NÃO-BLOQUEANTE para melhor performance)
-    // Tentar obter QR data rapidamente, mas não bloquear se demorar mais de 200ms
-    const qrDataPromise = this.generateQRDataIfApplicable(updatedRequest.id, updatedRequest.requesterId)
-      .catch((error) => {
-        this.logger.warn('Erro ao gerar QR data (não crítico)', { error: error.message });
-        return undefined;
-      });
-
-    // Aguardar QR data com timeout de 200ms (balance entre performance e funcionalidade)
-    const qrData = await Promise.race([
-      qrDataPromise,
-      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 200)),
-    ]);
-
-    return this.formatPaymentRequestResponse(updatedRequest, qrData);
+    return this.formatPaymentRequestResponse(updatedRequest);
   }
 
   async rejectPaymentRequest(id: string, userId: string, reason?: string) {
@@ -423,9 +386,7 @@ export class PaymentRequestsService {
       data: { paymentRequestId: paymentRequest.id, reason },
     });
 
-    // Gerar qrData se aplicável
-    const qrData = await this.generateQRDataIfApplicable(updatedRequest.id, updatedRequest.requesterId);
-    return this.formatPaymentRequestResponse(updatedRequest, qrData);
+    return this.formatPaymentRequestResponse(updatedRequest);
   }
 
   async cancelPaymentRequest(id: string, userId: string) {
@@ -469,9 +430,7 @@ export class PaymentRequestsService {
       }
     }
 
-    // Gerar qrData se aplicável
-    const qrData = await this.generateQRDataIfApplicable(updatedRequest.id, updatedRequest.requesterId);
-    return this.formatPaymentRequestResponse(updatedRequest, qrData);
+    return this.formatPaymentRequestResponse(updatedRequest);
   }
 
   async getPendingPaymentRequests(userId: string, page: number = 1, limit: number = 20) {
@@ -500,16 +459,13 @@ export class PaymentRequestsService {
       }),
     ]);
 
-    // Adicionar qrData para cada payment request quando aplicável
-    const paymentRequestsWithQRData = await Promise.all(
-      paymentRequests.map(async (pr) => {
-        const qrData = await this.generateQRDataIfApplicable(pr.id, pr.requesterId);
-        return this.formatPaymentRequestResponse(pr, qrData);
-      })
+    // Formatar payment requests
+    const formattedPaymentRequests = paymentRequests.map((pr) => 
+      this.formatPaymentRequestResponse(pr)
     );
 
     return {
-      paymentRequests: paymentRequestsWithQRData,
+      paymentRequests: formattedPaymentRequests,
       pagination: {
         page,
         limit,
@@ -643,67 +599,13 @@ export class PaymentRequestsService {
     }
   }
 
-  /**
-   * Gera dados do QR code se o requester for MERCHANT com QR habilitado
-   * Retorna undefined se não aplicável
-   */
-  private async generateQRDataIfApplicable(
-    paymentRequestId: string,
-    requesterId: string,
-  ): Promise<{ paymentUrl: string; qrOptions: any; merchantInfo?: any } | undefined> {
-    try {
-      // Verificar se o requester tem carteira MERCHANT
-      const merchantWallet = await this.prisma.wallet.findFirst({
-        where: {
-          userId: requesterId,
-          accountType: AccountType.MERCHANT,
-          status: 'ACTIVE',
-        },
-      });
-
-      if (!merchantWallet) {
-        return undefined;
-      }
-
-      const merchantInfo = merchantWallet.merchantInfo as any;
-      if (!merchantInfo?.qrCodeEnabled) {
-        return undefined;
-      }
-
-      // Gerar URL do pagamento
-      const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
-      const paymentUrl = `${appUrl}/payment/${paymentRequestId}`;
-
-      return {
-        paymentUrl,
-        qrOptions: {
-          size: 300,
-          margin: 2,
-          errorCorrectionLevel: 'M' as const,
-        },
-        merchantInfo: {
-          storeName: merchantInfo.storeName,
-          category: merchantInfo.category,
-        },
-      };
-    } catch (error) {
-      // Se houver erro, não incluir qrData
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn('Erro ao gerar qrData para payment request', { error: errorMessage, paymentRequestId, requesterId });
-      return undefined;
-    }
-  }
 
   /**
-   * Formata payment request com qrData se disponível
+   * Formata payment request para resposta
    */
-  private formatPaymentRequestResponse(
-    paymentRequest: any,
-    qrData?: { paymentUrl: string; qrOptions: any; merchantInfo?: any } | undefined,
-  ) {
+  private formatPaymentRequestResponse(paymentRequest: any) {
     return {
       ...paymentRequest,
-      qrData: qrData || undefined,
     };
   }
 
@@ -776,7 +678,7 @@ export class PaymentRequestsService {
     currency: Currency,
     description: string,
     expiresInDays: number = 7
-  ): Promise<{ paymentRequestId: string; paymentLink: string; qrData?: any }> {
+  ): Promise<{ paymentRequestId: string; paymentLink: string }> {
     // Verificar se o usuário tem carteira MERCHANT
     const merchantWallet = await this.prisma.wallet.findFirst({
       where: {
@@ -820,32 +722,9 @@ export class PaymentRequestsService {
     const appUrl = process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
     const paymentLink = `${appUrl}/payment/${paymentRequest.id}`;
 
-    // Retornar dados do QR code se estiver habilitado (frontend gera)
-    let qrData: any | undefined;
-    if (merchantInfo.qrCodeEnabled) {
-      qrData = {
-        paymentUrl: paymentLink,
-        paymentRequestId: paymentRequest.id,
-        amount: paymentRequest.amount,
-        currency: paymentRequest.currency.toString(),
-        description: paymentRequest.description,
-        expiresAt: paymentRequest.expiresAt,
-        merchantInfo: {
-          storeName: merchantInfo.storeName,
-          category: merchantInfo.category,
-        },
-        qrOptions: {
-          size: 300,
-          margin: 2,
-          errorCorrectionLevel: 'M' as const,
-        },
-      };
-    }
-
     return {
       paymentRequestId: paymentRequest.id,
       paymentLink,
-      qrData,
     };
   }
 

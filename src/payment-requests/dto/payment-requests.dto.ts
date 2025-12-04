@@ -71,34 +71,6 @@ export class PaymentRequestResponseDto {
 
   @ApiProperty({ required: false })
   metadata?: any;
-
-  @ApiPropertyOptional({ 
-    description: 'Dados para gerar QR code no frontend (apenas se requester for MERCHANT com QR habilitado)',
-    example: {
-      paymentUrl: 'http://localhost:3000/payment/123',
-      qrOptions: {
-        size: 300,
-        margin: 2,
-        errorCorrectionLevel: 'M'
-      },
-      merchantInfo: {
-        storeName: 'Loja Exemplo',
-        category: 'Retail'
-      }
-    }
-  })
-  qrData?: {
-    paymentUrl: string;
-    qrOptions?: {
-      size?: number;
-      margin?: number;
-      errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H';
-    };
-    merchantInfo?: {
-      storeName?: string;
-      category?: string;
-    };
-  };
 }
 
 export class PaymentRequestFilterDto {

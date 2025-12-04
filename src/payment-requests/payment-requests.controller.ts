@@ -237,7 +237,7 @@ export class PaymentRequestsController {
   @Get(':id/qr-code')
   @ApiOperation({ 
     summary: 'Gerar QR Code como imagem (apenas para carteiras MERCHANT)',
-    description: 'Retorna a imagem do QR code em base64. Para melhor performance, use os dados do campo qrData na resposta do payment request e gere o QR code no frontend.'
+    description: 'Retorna a imagem do QR code em base64. Para melhor performance, gere o QR code no frontend usando o ID do payment request para construir a URL: ${APP_URL}/payment/{id}'
   })
   @ApiResponse({ status: 200, description: 'QR Code gerado (data URL)' })
   @ApiResponse({ status: 400, description: 'Usuário não possui carteira MERCHANT ou QR Code não está habilitado' })
