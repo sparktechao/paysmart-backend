@@ -1,9 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsOptional, IsDateString, Min, Length } from 'class-validator';
 import { RequestStatus, RequestCategory } from '@prisma/client';
 
 export class CreatePaymentRequestDto {
-  @ApiPropertyOptional({ description: 'ID do usuário que receberá o pagamento. Se não fornecido, cria um payment link público (qualquer um pode pagar)' })
+  @ApiPropertyOptional({ 
+    description: 'ID do usuário (UUID) ou número de telefone (+244XXXXXXXXX) que receberá o pagamento. Se não fornecido, cria um payment link público (qualquer um pode pagar)',
+    example: 'cabeb799-d9da-4305-8cb6-6f583da0bf1f ou +244555666777'
+  })
   @IsOptional()
   @IsString()
   payerId?: string;
@@ -118,6 +121,13 @@ export class PaymentRequestFilterDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+}
+
+export class ApprovePaymentRequestDto {
+  @ApiProperty({ description: 'PIN de segurança da carteira', example: '1234' })
+  @IsString()
+  @Length(4, 6)
+  pin: string;
 }
 
 export class PaymentQRDataDto {

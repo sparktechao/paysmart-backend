@@ -15,6 +15,16 @@ export class NotificationsService {
   ) {}
 
   async createNotification(createNotificationDto: CreateNotificationDto): Promise<NotificationResponseDto> {
+    // Validar se o usuário existe antes de criar a notificação
+    const user = await this.prisma.user.findUnique({
+      where: { id: createNotificationDto.userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new Error(`Usuário com ID ${createNotificationDto.userId} não encontrado`);
+    }
+
     const notification = await this.prisma.notification.create({
       data: {
         userId: createNotificationDto.userId,
@@ -27,24 +37,39 @@ export class NotificationsService {
     });
 
     // Enviar notificação em tempo real via Socket.io
-    this.notificationsGateway.sendNotification(createNotificationDto.userId, {
-      id: notification.id,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      data: notification.data,
-      createdAt: notification.createdAt,
-    });
+    try {
+      this.notificationsGateway.sendNotification(createNotificationDto.userId, {
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        createdAt: notification.createdAt,
+      });
+      console.log(`📤 Notificação enviada via WebSocket para userId: ${createNotificationDto.userId}`, {
+        notificationId: notification.id,
+        type: notification.type,
+        title: notification.title,
+      });
+    } catch (error) {
+      console.warn('Erro ao enviar notificação via WebSocket (não crítico)', error);
+    }
 
     // Adicionar à fila para processamento assíncrono (email, SMS, push)
-    await this.notificationQueue.add('send-notification', {
-      notificationId: notification.id,
-      userId: createNotificationDto.userId,
-      type: createNotificationDto.type,
-      title: createNotificationDto.title,
-      message: createNotificationDto.message,
-      data: createNotificationDto.data,
-    });
+    // Tratar erro graciosamente se a fila não estiver disponível
+    try {
+      await this.notificationQueue.add('send-notification', {
+        notificationId: notification.id,
+        userId: createNotificationDto.userId,
+        type: createNotificationDto.type,
+        title: createNotificationDto.title,
+        message: createNotificationDto.message,
+        data: createNotificationDto.data,
+      });
+    } catch (error) {
+      // Log do erro mas não falha a criação da notificação
+      console.warn('Erro ao adicionar notificação à fila:', error);
+    }
 
     return this.mapToNotificationResponse(notification);
   }

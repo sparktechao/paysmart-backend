@@ -127,12 +127,12 @@ export class WalletsService {
 
     // Gerar número da carteira único
     let walletNumber = this.generateWalletNumber();
-    
+
     // Verificar se o número já existe e gerar novo se necessário
     let existingWallet = await this.prisma.wallet.findUnique({
       where: { walletNumber },
     });
-    
+
     while (existingWallet) {
       walletNumber = this.generateWalletNumber();
       existingWallet = await this.prisma.wallet.findUnique({

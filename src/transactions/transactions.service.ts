@@ -3,7 +3,8 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 // import { Queue } from 'bull';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TransactionResponseDto } from './dto/transactions.dto';
-import { TransactionType, Currency } from '../common/enums/transaction.enum';
+import { Currency } from '../common/enums/transaction.enum';
+import { TransactionType } from '@prisma/client';
 
 @Injectable()
 export class TransactionsService {
@@ -125,9 +126,11 @@ export class TransactionsService {
           await this.updateWalletBalance(prisma, fromWallet, data.amount, data.currency, 'SUBTRACT');
           this.logger.debug('Saque processado', { walletId: fromWallet.id });
         } else {
-          // Remover da origem e adicionar ao destino
-          await this.updateWalletBalance(prisma, fromWallet, data.amount, data.currency, 'SUBTRACT');
-          await this.updateWalletBalance(prisma, toWallet, data.amount, data.currency, 'ADD');
+          // Remover da origem e adicionar ao destino - PARALELIZADO para melhor performance
+          await Promise.all([
+            this.updateWalletBalance(prisma, fromWallet, data.amount, data.currency, 'SUBTRACT'),
+            this.updateWalletBalance(prisma, toWallet, data.amount, data.currency, 'ADD'),
+          ]);
           this.logger.debug('Transferência processada', { fromWalletId: fromWallet.id, toWalletId: toWallet.id });
         }
 

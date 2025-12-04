@@ -8,8 +8,8 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { UseGuards, Logger } from '@nestjs/common';
-import { WsJwtGuard } from '../common/auth/guards/ws-jwt.guard';
+import { Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   cors: {
@@ -18,7 +18,6 @@ import { WsJwtGuard } from '../common/auth/guards/ws-jwt.guard';
   },
   namespace: '/notifications',
 })
-@UseGuards(WsJwtGuard)
 export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
@@ -26,38 +25,81 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   private readonly logger = new Logger(NotificationsGateway.name);
   private userSockets: Map<string, Socket> = new Map();
 
+  constructor(private jwtService: JwtService) {}
+
   async handleConnection(client: Socket) {
     try {
-      // Extrair token do handshake
-      const token = client.handshake.auth.token || client.handshake.headers.authorization;
-      
+      // Extrair e validar token JWT
+      const token = this.extractTokenFromClient(client);
+
       if (!token) {
+        this.logger.warn('❌ Conexão rejeitada: token não fornecido');
         client.disconnect();
         return;
       }
 
-      // Em produção, você validaria o token JWT aqui
-      // Por simplicidade, vamos assumir que o userId está no token
-      const userId = this.extractUserIdFromToken(token);
-      
-      if (!userId) {
+      // Validar token JWT
+      let payload: any;
+      try {
+        payload = await this.jwtService.verifyAsync(token);
+      } catch (error) {
+        this.logger.warn('❌ Conexão rejeitada: token inválido', {
+          error: error instanceof Error ? error.message : String(error)
+        });
         client.disconnect();
         return;
       }
+
+      const userId = payload.sub;
+
+      if (!userId) {
+        this.logger.warn('❌ Conexão rejeitada: userId não encontrado no token', { payload });
+        client.disconnect();
+        return;
+      }
+
+      this.logger.log('🔌 Nova conexão WebSocket', {
+        userId,
+        socketId: client.id,
+        phone: payload.phone,
+      });
+
+      // Armazenar dados do usuário no socket
+      client.data.user = payload;
 
       // Armazenar socket do usuário
       this.userSockets.set(userId, client);
-      
+
       // Juntar usuário a uma sala específica
-      client.join(`user:${userId}`);
-      
-      this.logger.log(`Usuário conectado ao Socket.io`, { userId });
+      const room = `user:${userId}`;
+      client.join(room);
+
+      this.logger.log(`✅ Usuário conectado ao Socket.io`, {
+        userId,
+        socketId: client.id,
+        room,
+        totalUsers: this.userSockets.size
+      });
+
+      // Verificar se está realmente na sala
+      const rooms = Array.from(client.rooms);
+      this.logger.log(`📍 Socket ${client.id} está nas salas:`, rooms);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      this.logger.error('Erro na conexão Socket.io', errorStack, { error: errorMessage });
+      this.logger.error('❌ Erro na conexão Socket.io', errorStack, { error: errorMessage });
       client.disconnect();
     }
+  }
+
+  private extractTokenFromClient(client: Socket): string | undefined {
+    let token = client.handshake.auth.token || client.handshake.headers.authorization;
+
+    if (token && typeof token === 'string' && token.startsWith('Bearer ')) {
+      token = token.substring(7);
+    }
+
+    return token;
   }
 
   handleDisconnect(client: Socket) {
@@ -90,7 +132,44 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   // Método para enviar notificação para um usuário específico
   sendNotification(userId: string, notification: any) {
-    this.server.to(`user:${userId}`).emit('notification', notification);
+    const room = `user:${userId}`;
+    this.logger.log(`📤 Enviando notificação para sala: ${room}`, {
+      userId,
+      notificationId: notification.id,
+      type: notification.type,
+      title: notification.title,
+    });
+    
+    // Verificar se há clientes na sala usando o socket do usuário
+    const userSocket = this.userSockets.get(userId);
+    if (userSocket) {
+      this.logger.log(`✅ Usuário ${userId} está conectado (Socket ID: ${userSocket.id})`);
+    } else {
+      this.logger.warn(`⚠️ Usuário ${userId} NÃO está conectado ao WebSocket`);
+      this.logger.debug(`Usuários conectados: ${Array.from(this.userSockets.keys()).join(', ')}`);
+    }
+    
+    // Verificar salas usando o adapter (se disponível)
+    try {
+      const adapter = (this.server as any).sockets?.adapter;
+      if (adapter && adapter.rooms) {
+        const roomClients = adapter.rooms.get(room);
+        const clientCount = roomClients ? roomClients.size : 0;
+        this.logger.log(`👥 Clientes na sala ${room}: ${clientCount}`);
+        
+        if (clientCount === 0) {
+          this.logger.warn(`⚠️ Nenhum cliente na sala ${room} - notificação não será entregue`);
+        }
+      }
+    } catch (error) {
+      // Ignorar erro do adapter, não é crítico
+    }
+    
+    // Enviar notificação
+    this.server.to(room).emit('notification', notification);
+    
+    // Log de confirmação
+    this.logger.log(`✅ Notificação emitida para sala ${room}`);
   }
 
   // Método para enviar notificação para múltiplos usuários
@@ -123,23 +202,5 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   // Método para obter lista de usuários conectados
   getConnectedUsers(): string[] {
     return Array.from(this.userSockets.keys());
-  }
-
-  private extractUserIdFromToken(token: string): string | null {
-    try {
-      // Em produção, você validaria o JWT token aqui
-      // Por simplicidade, vamos assumir que o token contém o userId
-      if (token.startsWith('Bearer ')) {
-        token = token.substring(7);
-      }
-      
-      // Decodificar JWT (simplificado)
-      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-      return payload.sub || payload.userId;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.warn('Erro ao extrair userId do token', { error: errorMessage });
-      return null;
-    }
   }
 } 

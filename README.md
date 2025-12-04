@@ -166,7 +166,16 @@ npm run docker:down
 npm run docker:logs
 ```
 
-## 📚 Documentação da API
+## 📚 Documentação
+
+### Documentação Completa
+Toda a documentação está organizada na pasta `docs/`:
+
+- 📖 [Índice da Documentação](./docs/README.md)
+- 🏗️ [Arquitetura](./docs/architecture/analise-profunda.md)
+- 🚀 [Deploy e Infraestrutura](./docs/deployment/)
+- 💻 [Desenvolvimento](./docs/development/)
+- 🔌 [API e WebSocket](./docs/api/)
 
 ### Swagger UI
 Após iniciar a aplicação, acesse:
@@ -367,9 +376,12 @@ Este projeto está sob a licença [MIT](LICENSE).
 ## 🆘 Suporte
 
 ### Documentação
-- [Guia de Desenvolvimento](docs/development.md)
-- [Guia de API](docs/api.md)
-- [Guia de Deploy](docs/deployment.md)
+- 📖 [Índice Completo](./docs/README.md)
+- 🏗️ [Arquitetura](./docs/architecture/analise-profunda.md)
+- 🚀 [Deploy com Docker](./docs/deployment/docker-deploy.md)
+- 💻 [Guia de Desenvolvimento](./docs/development/development-guide.md)
+- 🔌 [Referência da API](./docs/api/api-reference.md)
+- 📡 [WebSocket e Notificações](./docs/api/websocket-notifications.md)
 
 ### Contato
 - Email: support@paysmart.ao

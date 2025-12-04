@@ -15,7 +15,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@ne
 import { PaymentRequestsService } from './payment-requests.service';
 import { 
   CreatePaymentRequestDto, 
-  PaymentRequestResponseDto
+  PaymentRequestResponseDto,
+  ApprovePaymentRequestDto
 } from './dto/payment-requests.dto';
 import { JwtAuthGuard } from '../common/auth/guards/jwt-auth.guard';
 import { Request } from 'express';
@@ -108,20 +109,25 @@ export class PaymentRequestsController {
 
   @Put(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Aprovar solicitação de pagamento' })
+  @ApiOperation({ 
+    summary: 'Aprovar solicitação de pagamento',
+    description: 'Aprova e processa o pagamento da solicitação. Cria uma transação completa, movimenta saldos entre carteiras e atualiza o status do payment request.'
+  })
   @ApiResponse({ 
     status: 200, 
-    description: 'Solicitação aprovada com sucesso',
+    description: 'Solicitação aprovada e pagamento processado com sucesso',
     type: PaymentRequestResponseDto 
   })
   @ApiResponse({ status: 404, description: 'Solicitação não encontrada' })
-  @ApiResponse({ status: 400, description: 'Solicitação não pode ser aprovada' })
+  @ApiResponse({ status: 400, description: 'Solicitação não pode ser aprovada (expirada, saldo insuficiente, etc.)' })
+  @ApiResponse({ status: 403, description: 'PIN inválido ou saldo insuficiente' })
   async approvePaymentRequest(
     @Req() req: Request,
-    @Param('id') id: string
+    @Param('id') id: string,
+    @Body() approveDto: ApprovePaymentRequestDto
   ): Promise<PaymentRequestResponseDto> {
     const userId = req.user['id'];
-    return this.paymentRequestsService.approvePaymentRequest(id, userId);
+    return this.paymentRequestsService.approvePaymentRequest(id, userId, approveDto.pin);
   }
 
   @Put(':id/reject')
