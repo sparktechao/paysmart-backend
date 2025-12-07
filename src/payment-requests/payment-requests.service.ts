@@ -173,13 +173,10 @@ export class PaymentRequestsService {
   }
 
   async getPaymentRequestById(id: string, userId: string) {
+    // Buscar payment request primeiro (sem filtro de autorização)
     const paymentRequest = await this.prisma.paymentRequest.findFirst({
       where: {
         id,
-        OR: [
-          { requesterId: userId },
-          { payerId: userId },
-        ],
       },
       include: {
         requester: {
@@ -191,6 +188,17 @@ export class PaymentRequestsService {
     if (!paymentRequest) {
       throw new NotFoundException('Solicitação de pagamento não encontrada');
     }
+
+    // Validar autorização para visualizar
+    // Se payerId for null (payment link público), qualquer usuário autenticado pode ver
+    // Se payerId não for null, apenas requester ou payer específico podem ver
+    if (paymentRequest.payerId !== null) {
+      // Payment request com payer específico: apenas requester ou payer podem ver
+      if (paymentRequest.requesterId !== userId && paymentRequest.payerId !== userId) {
+        throw new NotFoundException('Solicitação de pagamento não encontrada');
+      }
+    }
+    // Se payerId for null (payment link público), qualquer usuário autenticado pode visualizar
 
     return this.formatPaymentRequestResponse(paymentRequest);
   }
